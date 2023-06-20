@@ -1,35 +1,33 @@
 lilit-sql
 ==========
 
-lilit-sql is a SQL-equivalent typed language that supports higher order primitives like generics, parameterization, and meta-programming.
+lilit-sql is a Ruby library that provides APIs for generating SQL statements. 
+
+The APIs supports higher order primitives like generics, parameterization, and meta-programming.
+
+It encourages code-reuse, enables unit-testing, and makes composing production-grade SQLs easier and more robust.
+
+This is suitable for an application that builds analytics on top of data warehouses like Presto.
 
 Examples
 ---------
 
 ```
-struct Customer(
-  id: string,
-  name: string,
-  age: int
-)
+Customer = Struct.new(:id, :name, :age)
+Result = Struct.new(:age, :name)
+  
+query = Table.new(Customer, 'customers')
+          .where {|c| c.name == 'test'}
+          .map(Result) {|c| Result.new(c.age, c.name)}
 
-struct Result(
-  name: string,
-  age: Int
-)
-
-def main() {
-  table[Customer]("customers")
-    .filter { c => c.name == "test" }
-    .map { c => Result(c.name, c.age) }  
-}
+puts query.generate_sql
 ```
 
-will transpile to:
+will generate:
 
 ```
 select
-  name, age
+  age, name
 from customers
 where name = 'test'
 ```
