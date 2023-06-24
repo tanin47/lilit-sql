@@ -1,26 +1,22 @@
 # frozen_string_literal: true
 
-module Query
-  def where(&blk)
-    self
-  end
-
-  def group_by
-    self
-  end
-
-  def map(struct, &blk)
-    self
-  end
-
-  def sql
-
-  end
-end
-
 class GroupBy
-  def aggregate(struct, &blk)
+  attr_accessor :table
+  attr_accessor :key
 
+  def initialize(table, key)
+    @table = table
+    @key = key
+  end
+
+  def aggregate(&blk)
+    grouped_key = Row.new([key.name])
+    result = blk.call(grouped_key, Aggregate.new)
+
+    @table.row = Row.new(result.class.members, result)
+    @table.grouped_key = grouped_key
+
+    table
   end
 end
 
@@ -28,8 +24,14 @@ class Row
   attr_accessor :columns
 
   def initialize(columns, origins = [])
-    @columns = columns.zip(origins).map do |name, origin|
-      Column.new(name, origin)
+    @columns = columns.zip(origins).map do |col, origin|
+      if col.is_a?(Symbol)
+        Column.new(col, origin)
+      elsif col.is_a?(Column)
+        col
+      else
+        raise NotImplementedError
+      end
     end
   end
 
@@ -61,11 +63,31 @@ class Column
 
   def sql
     s = ''
-    if origin && origin.name != @name
-      s += "#{origin.name} as "
+    if origin
+      origin_sql = origin.sql
+      if origin_sql != @name.to_s
+        s += "#{origin.sql} as "
+      end
     end
     s += @name.to_s
     s
+  end
+end
+
+class Count < Column
+
+  def initialize
+    super(nil, nil)
+  end
+
+  def sql
+    "count(*)"
+  end
+end
+
+class Aggregate
+  def count
+    Count.new
   end
 end
 
@@ -113,11 +135,11 @@ class Condition
 end
 
 class Table
-  include Query
-
   attr_accessor :struct
   attr_accessor :table_name
   attr_accessor :conditions
+  attr_accessor :row
+  attr_accessor :grouped_key
 
   def initialize(struct, table_name)
     @struct = struct
@@ -126,7 +148,7 @@ class Table
     @conditions = []
   end
 
-  def map(struct, &blk)
+  def map(&blk)
     result = blk.call(@row)
     @row = Row.new(result.class.members, result)
     self
@@ -138,6 +160,16 @@ class Table
     self
   end
 
+  def group_by(&blk)
+    result = blk.call(@row)
+
+    if result.is_a?(Column)
+      GroupBy.new(self, result)
+    else
+      raise NotImplementedError
+    end
+  end
+
   def sql
     s = "select "
     s += @row.sql
@@ -146,6 +178,11 @@ class Table
     if @conditions.size > 0
       s += " where #{@conditions.map {|c| c.sql}.join(' and ')}"
     end
+
+    if @grouped_key
+      s += " group by #{@grouped_key.sql}"
+    end
+
     s
   end
 end

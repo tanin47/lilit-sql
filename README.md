@@ -18,7 +18,7 @@ Result = Struct.new(:level, :name)
   
 query = Table.new(Customer, 'customers')
           .where {|c| c.name == 'test'}
-          .map(Result) {|c| Result.new(c.level, c.name)}
+          .map {|c| Result.new(c.level, c.name)}
 
 puts query.generate_sql
 ```
