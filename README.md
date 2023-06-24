@@ -14,11 +14,11 @@ Examples
 
 ```
 Customer = Struct.new(:id, :name, :age)
-Result = Struct.new(:age, :name)
+Result = Struct.new(:level, :name)
   
 query = Table.new(Customer, 'customers')
           .where {|c| c.name == 'test'}
-          .map(Result) {|c| Result.new(c.age, c.name)}
+          .map(Result) {|c| Result.new(c.level, c.name)}
 
 puts query.generate_sql
 ```
@@ -27,7 +27,7 @@ will generate:
 
 ```
 select
-  age, name
+  age as level, name
 from customers
 where name = 'test'
 ```
