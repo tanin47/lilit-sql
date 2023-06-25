@@ -13,8 +13,15 @@ class OverallTest < Minitest::Test
     query = Query.new(Table.new(Customer, 'customers'))
          .where {|c| c.col(:name).eq(Literal.new('test')).and(c.col(:age).eq(Literal.new(34)))}
          .map {|c| result.new(c.col(:age), c.col(:name))}
+    expected = <<-EOF
+select
+  customers.age as level,
+  customers.name as name
+from customers
+where customers.name = 'test' and customers.age = 34
+EOF
 
-    assert_content_equal("select age as level, name from customers where name = 'test' and age = 34", generate_sql(query))
+    assert_content_equal(expected, generate_sql(query))
   end
 
   def test_multiple_maps
@@ -28,11 +35,19 @@ class OverallTest < Minitest::Test
 
     expected = <<-EOF
 with subquery0 as (
-  select age as level, name from customers where name = 'test' and age = 34
+  select
+    customers.age as level,
+    customers.name as name
+  from customers
+  where customers.name = 'test' and customers.age = 34
 )
 
-select level as level2, name as name2 from subquery0 where level = 10
-    EOF
+select
+  subquery0.level as level2,
+  subquery0.name as name2
+from subquery0
+where subquery0.level = 10
+EOF
 
     assert_content_equal(expected, generate_sql(query))
   end
@@ -41,9 +56,16 @@ select level as level2, name as name2 from subquery0 where level = 10
     result = Struct.new(:age, :count)
     query = Query.new(Table.new(Customer, 'customers'))
                  .group_by {|c| c.col(:age) }
-                 .aggregate { |grouped, _row, agg| result.new(grouped.col(:age), agg.count) }
+                 .aggregate { |agg, grouped, _row| result.new(grouped, agg.count) }
+    expected = <<-EOF
+select 
+  customers.age as age, 
+  count(*) as count 
+from customers 
+group by customers.age
+EOF
 
-    assert_content_equal("select age, count(*) as count from customers group by age", generate_sql(query))
+    assert_content_equal(expected, generate_sql(query))
   end
 
   def test_multiple_group_bys
@@ -51,17 +73,17 @@ select level as level2, name as name2 from subquery0 where level = 10
     result2 = Struct.new(:level, :total, :count_level)
     query = Query.new(Table.new(Customer, 'customers'))
                  .group_by {|c| c.col(:age) }
-                 .aggregate { |grouped, row, agg| result.new(grouped.col(:age), agg.count) }
+                 .aggregate { |agg, grouped, _row| result.new(grouped, agg.count) }
                  .group_by {|c| c.col(:level) }
-                 .aggregate { |grouped, row, agg| result2.new(grouped.col(:level), agg.sum(row.col(:count)), agg.count)}
+                 .aggregate { |agg, grouped, row| result2.new(grouped, agg.sum(row.col(:count)), agg.count)}
 
     expected = <<-EOF
 with subquery0 as (
-  select age as level, count(*) as count from customers group by age
+  select customers.age as level, count(*) as count from customers group by customers.age
 )
 
-select level, sum(count) as total, count(*) as count_level from subquery0 group by level
-    EOF
+select subquery0.level as level, sum(subquery0.count) as total, count(*) as count_level from subquery0 group by subquery0.level
+EOF
 
     assert_content_equal(expected, generate_sql(query))
   end

@@ -1,5 +1,19 @@
 # frozen_string_literal: true
 
+class From
+  attr_accessor :source
+  attr_accessor :condition
+
+  def initialize(source, condition = nil)
+    @source = source
+    @condition = condition
+  end
+
+  def rows
+    source.rows
+  end
+end
+
 class GroupBy
   attr_accessor :query
   attr_accessor :key
@@ -10,21 +24,21 @@ class GroupBy
   end
 
   def aggregate(&blk)
-    grouped_key = Row.new([key.name])
-    result = blk.call(grouped_key, @query.row, Aggregate.new)
+    result = blk.call(Aggregate.new, @key, *@query.rows)
 
-    @query.set_grouped_key(grouped_key)
-    @query.set_row(Row.new(result.class.members, result))
+    @query.set_grouped_key(@key)
+    @query.set_row(Row.new(result.class.members, @query, result))
   end
 end
 
 class Row
+  attr_accessor :parent
   attr_accessor :columns
 
-  def initialize(columns, origins = [])
+  def initialize(columns, parent, origins = [])
     @columns = columns.zip(origins).map do |col, origin|
       if col.is_a?(Symbol)
-        Column.new(col, origin)
+        Column.new(col, parent, origin)
       elsif col.is_a?(Column)
         col
       else
@@ -33,25 +47,31 @@ class Row
     end
   end
 
-  def col(symbol)
-    found = @columns.select {|c| c.name == symbol}.first
+  def col(name)
+    found = @columns.select {|c| c.name == name}.first
 
-    raise ArgumentError.new("#{symbol} is not found in the columns: #{@columns.map {|c|c.name}.inspect}") if found.nil?
+    raise ArgumentError.new("#{name} is not found in the columns: #{@columns.map {|c|c.name}.inspect}") if found.nil?
 
     found
   end
 
-  def sql
-    @columns.map {|c|c.sql}.join(', ')
+  def has?(name)
+    @columns.any? {|c| c.name == name}
+  end
+
+  def decl_sql
+    @columns.map {|c|c.decl_sql}.join(', ')
   end
 end
 
 class Column
   attr_accessor :name
+  attr_accessor :parent
   attr_accessor :origin
 
-  def initialize(name, origin = nil)
+  def initialize(name, parent, origin = nil)
     @name = name
+    @parent = parent
     @origin = origin
   end
 
@@ -59,12 +79,16 @@ class Column
     Condition.new(self, "eq", other)
   end
 
-  def sql(render_as = true)
+  def ref_sql
+    "#{@parent.subquery_name}.#{@name}"
+  end
+
+  def decl_sql
     s = ''
-    if origin and render_as
-      origin_sql = origin.sql(false)
+    if origin
+      origin_sql = origin.ref_sql
       if origin_sql != @name.to_s
-        s += "#{origin.sql(false)} as "
+        s += "#{origin.ref_sql} as "
       end
     end
     s += @name.to_s
@@ -75,10 +99,14 @@ end
 class Count < Column
 
   def initialize
-    super(nil, nil)
+    super(nil, nil, nil)
   end
 
-  def sql(render_as = true)
+  def ref_sql
+    decl_sql
+  end
+
+  def decl_sql
     "count(*)"
   end
 end
@@ -86,11 +114,15 @@ end
 class Sum < Column
 
   def initialize(col)
-    super(nil, col)
+    super(nil, nil, col)
   end
 
-  def sql(render_as = true)
-    "sum(#{@origin.sql(false)})"
+  def ref_sql
+    decl_sql
+  end
+
+  def decl_sql
+    "sum(#{@origin.ref_sql})"
   end
 end
 
@@ -111,7 +143,11 @@ class Literal
     @value = value
   end
 
-  def sql(render_as = true)
+  def ref_sql
+    decl_sql
+  end
+
+  def decl_sql
     if @value.is_a?(Integer)
       "#{value}"
     elsif @value.is_a?(String)
@@ -142,18 +178,18 @@ class Condition
     if op == "and"
       "#{left.sql} and #{right.sql}"
     elsif op == "eq"
-      "#{left.sql(false)} = #{right.sql(false)}"
+      "#{left.ref_sql} = #{right.ref_sql}"
     end
   end
 end
 
 class Table
   attr_accessor :table_name
-  attr_accessor :row
+  attr_accessor :rows
 
   def initialize(struct, table_name)
     @table_name = table_name
-    @row = Row.new(struct.members)
+    @rows = [Row.new(struct.members, self)]
   end
 
   def subquery_name
@@ -162,14 +198,16 @@ class Table
 end
 
 class Query
-  attr_accessor :from
+  attr_accessor :froms
+  attr_accessor :is_vanilla
 
   def initialize(from)
-    @from = from
+    @froms = [From.new(from, nil)]
     @conditions = []
     @grouped_key = nil
     @subquery_name = nil
     @row = nil
+    @is_vanilla = @froms.size == 1
   end
 
   def map(&blk)
@@ -177,8 +215,9 @@ class Query
       return Query.new(self).map(&blk)
     end
 
-    result = blk.call(@from.row)
-    set_row(Row.new(result.class.members, result))
+    unvanilla
+    result = blk.call(*get_from_rows)
+    set_row(Row.new(result.class.members, self, result))
   end
 
   def set_grouped_key(grouped_key)
@@ -191,12 +230,12 @@ class Query
     self
   end
 
-  def row
+  def rows
     if @row
-      return @row
+      return [@row]
     end
 
-    @from.row
+    get_from_rows
   end
 
   def group_by(&blk)
@@ -204,7 +243,8 @@ class Query
       return Query.new(self).group_by(&blk)
     end
 
-    result = blk.call(@from.row)
+    unvanilla
+    result = blk.call(*get_from_rows)
 
     if result.is_a?(Column)
       GroupBy.new(self, result)
@@ -213,12 +253,25 @@ class Query
     end
   end
 
+  def join(other, &blk)
+    if @row || @conditions.size > 0
+      return Query.new(self).join(other, &blk)
+    end
+
+    unvanilla
+    condition = blk.call(*(get_from_rows + other.rows))
+    @froms.push(From.new(other, condition))
+
+    self
+  end
+
   def where(&blk)
     if @row
       return Query.new(self).where(&blk)
     end
 
-    condition = blk.call(@from.row)
+    unvanilla
+    condition = blk.call(*get_from_rows)
     @conditions.push(condition)
     self
   end
@@ -228,6 +281,10 @@ class Query
   end
 
   def subquery_name
+    if @is_vanilla
+      return @froms.first.source.subquery_name
+    end
+
     if @subquery_name.nil?
       raise ArgumentError.new("The query #{self.inspect} doesn't have a subquery name")
     end
@@ -237,18 +294,39 @@ class Query
 
   def sql
     s = "select "
-    s += row.sql
-    s += " from #{@from.subquery_name}"
+    s += rows.map {|r| r.decl_sql}.join(', ')
+    s += " from"
+
+    @froms.each_with_index do |from, index|
+      if index >= 1
+        s += " join"
+      end
+
+      s += " #{from.source.subquery_name}"
+
+      if from.condition
+        s += " on #{from.condition.sql}"
+      end
+    end
 
     if @conditions.size > 0
       s += " where #{@conditions.map {|c| c.sql}.join(' and ')}"
     end
 
     if @grouped_key
-      s += " group by #{@grouped_key.sql}"
+      s += " group by #{@grouped_key.ref_sql}"
     end
 
     s
+  end
+
+  private
+  def get_from_rows
+    @froms.map {|f| f.rows}.flatten
+  end
+
+  def unvanilla
+    @is_vanilla = false
   end
 end
 
@@ -276,11 +354,17 @@ def generate_sql(query)
 end
 
 def fill(query)
-  if query.from.is_a?(Query)
-    queries = fill(query.from)
-    queries.push(query)
-    queries
-  elsif query.from.is_a?(Table)
-    [query]
+  return [] if query.is_vanilla
+
+  queries = []
+  query.froms.each do |from|
+    if from.source.is_a?(Query)
+      subqueries = fill(from.source)
+      subqueries.each do |subquery|
+        queries.push(subquery)
+      end
+    end
   end
+  queries.push(query)
+  queries
 end
