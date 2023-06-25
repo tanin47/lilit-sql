@@ -1,13 +1,23 @@
 lilit-sql
 ==========
 
-lilit-sql is a Ruby library that provides APIs for generating SQL statements. 
+lilit-sql is a Ruby library for composing production-grade SQLs
+ 
+The APIs supports higher order primitives like parameterization and meta-programming.
 
-The APIs supports higher order primitives like generics, parameterization, and meta-programming.
+It makes writing production-grade SQLs easier and more robust.
 
-It encourages code-reuse, enables unit-testing, and makes composing production-grade SQLs easier and more robust.
+This is suitable for an application that builds analytics on top of SQL-supported data warehouses like Presto.
 
-This is suitable for an application that builds analytics on top of data warehouses like Presto.
+Why?
+-----
+
+In a production setting, the 2 needs often arise:
+* There's a need to generate slightly different SQLs based on user's input. Conditional logic capability based on user's input is needed.
+* There's a need to share a common logic. This is extremely difficult to do in SQL because it would require the common logic to be aware of the prior SQL's columns. It becomes infeasible when there are many SQLs using the same common part. Parameterization is needed.
+
+lilit-sql solves the above needs by enabling conditional logic based on user's input and existing columns using Plain Old Ruby Code (PORC).
+
 
 Examples
 ---------
@@ -40,5 +50,5 @@ Tasks
 - [x] Support multiple group bys
 - [x] Support joins
 - [x] Support left joins
-- [ ] Implement the lookup framework based on the columns
+- [x] Implement the lookup framework based on the columns
   - 2 reports: debits-credits and income statement -- different starting point and ending point.

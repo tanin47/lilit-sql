@@ -26,7 +26,7 @@ class GroupBy
   end
 
   def aggregate(&blk)
-    result = blk.call(Aggregate.new, @key, *@query.rows)
+    result = blk.call(@key, *@query.rows)
 
     @query.set_grouped_key(@key)
     @query.set_row(Row.new(result.class.members, @query, result))
@@ -128,12 +128,12 @@ class Sum < Column
   end
 end
 
-class Aggregate
-  def count
+module Aggregate
+  def self.count
     Count.new
   end
 
-  def sum(col)
+  def self.sum(col)
     Sum.new(col)
   end
 end
@@ -201,15 +201,17 @@ end
 
 class Query
   attr_accessor :froms
-  attr_accessor :is_vanilla
 
   def initialize(from)
-    @froms = [From.new(from, nil)]
+    @froms = [From.new(from)]
     @conditions = []
     @grouped_key = nil
     @subquery_name = nil
     @row = nil
-    @is_vanilla = @froms.size == 1
+  end
+
+  def is_vanilla
+    @froms.size == 1 && @conditions.empty? && @grouped_key.nil? && @row.nil?
   end
 
   def map(&blk)
@@ -217,7 +219,6 @@ class Query
       return Query.new(self).map(&blk)
     end
 
-    unvanilla
     result = blk.call(*get_from_rows)
     set_row(Row.new(result.class.members, self, result))
   end
@@ -230,6 +231,10 @@ class Query
   def set_row(row)
     @row = row
     self
+  end
+
+  def has?(column_name)
+    rows.any? {|r| r.has?(column_name)}
   end
 
   def rows
@@ -245,7 +250,6 @@ class Query
       return Query.new(self).group_by(&blk)
     end
 
-    unvanilla
     result = blk.call(*get_from_rows)
 
     if result.is_a?(Column)
@@ -268,7 +272,6 @@ class Query
       return Query.new(self).where(&blk)
     end
 
-    unvanilla
     condition = blk.call(*get_from_rows)
     @conditions.push(condition)
     self
@@ -279,7 +282,7 @@ class Query
   end
 
   def subquery_name
-    if @is_vanilla
+    if is_vanilla
       return @froms.first.source.subquery_name
     end
 
@@ -329,16 +332,11 @@ class Query
     @froms.map {|f| f.rows}.flatten
   end
 
-  def unvanilla
-    @is_vanilla = false
-  end
-
   def perform_join(join_type, other, &blk)
     if @row || @conditions.size > 0
       return Query.new(self).send(:perform_join, join_type, other, &blk)
     end
 
-    unvanilla
     condition = blk.call(*(get_from_rows + other.rows))
     @froms.push(From.new(other, join_type, condition))
 
