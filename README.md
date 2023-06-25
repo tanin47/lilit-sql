@@ -34,6 +34,7 @@ where name = 'test'
 
 Tasks
 ------
-- [ ] Support simple filter
-- [ ] Support simple group by
-- [ ] Support multiple maps that should generate sub-query
+- [x] Support simple filter
+- [x] Support simple group by
+- [x] Support multiple maps that should generate sub-query
+- [ ] Support multiple group bys.

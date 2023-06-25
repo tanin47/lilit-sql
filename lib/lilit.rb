@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
 class GroupBy
-  attr_accessor :table
+  attr_accessor :query
   attr_accessor :key
 
-  def initialize(table, key)
-    @table = table
+  def initialize(query, key)
+    @query = query
     @key = key
   end
 
   def aggregate(&blk)
     grouped_key = Row.new([key.name])
-    result = blk.call(grouped_key, Aggregate.new)
+    result = blk.call(grouped_key, @query.row, Aggregate.new)
 
-    @table.set_grouped_key(grouped_key)
-    @table.set_row(Row.new(result.class.members, result))
+    @query.set_grouped_key(grouped_key)
+    @query.set_row(Row.new(result.class.members, result))
   end
 end
 
@@ -36,7 +36,7 @@ class Row
   def col(symbol)
     found = @columns.select {|c| c.name == symbol}.first
 
-    raise ArgumentError.new("#{symbol} is not found in the colums: #{@columns.map {|c|c.name}.inspect}") if found.nil?
+    raise ArgumentError.new("#{symbol} is not found in the columns: #{@columns.map {|c|c.name}.inspect}") if found.nil?
 
     found
   end
@@ -78,14 +78,29 @@ class Count < Column
     super(nil, nil)
   end
 
-  def sql
+  def sql(render_as = true)
     "count(*)"
+  end
+end
+
+class Sum < Column
+
+  def initialize(col)
+    super(nil, col)
+  end
+
+  def sql(render_as = true)
+    "sum(#{@origin.sql(false)})"
   end
 end
 
 class Aggregate
   def count
     Count.new
+  end
+
+  def sum(col)
+    Sum.new(col)
   end
 end
 
