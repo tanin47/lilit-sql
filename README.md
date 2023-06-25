@@ -31,3 +31,9 @@ select
 from customers
 where name = 'test'
 ```
+
+Tasks
+------
+- [ ] Support simple filter
+- [ ] Support simple group by
+- [ ] Support multiple maps that should generate sub-query

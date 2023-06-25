@@ -13,10 +13,8 @@ class GroupBy
     grouped_key = Row.new([key.name])
     result = blk.call(grouped_key, Aggregate.new)
 
-    @table.row = Row.new(result.class.members, result)
-    @table.grouped_key = grouped_key
-
-    table
+    @table.set_grouped_key(grouped_key)
+    @table.set_row(Row.new(result.class.members, result))
   end
 end
 
@@ -61,12 +59,12 @@ class Column
     Condition.new(self, "eq", other)
   end
 
-  def sql
+  def sql(render_as = true)
     s = ''
-    if origin
-      origin_sql = origin.sql
+    if origin and render_as
+      origin_sql = origin.sql(false)
       if origin_sql != @name.to_s
-        s += "#{origin.sql} as "
+        s += "#{origin.sql(false)} as "
       end
     end
     s += @name.to_s
@@ -98,7 +96,7 @@ class Literal
     @value = value
   end
 
-  def sql
+  def sql(render_as = true)
     if @value.is_a?(Integer)
       "#{value}"
     elsif @value.is_a?(String)
@@ -129,39 +127,69 @@ class Condition
     if op == "and"
       "#{left.sql} and #{right.sql}"
     elsif op == "eq"
-      "#{left.sql} = #{right.sql}"
+      "#{left.sql(false)} = #{right.sql(false)}"
     end
   end
 end
 
 class Table
-  attr_accessor :struct
   attr_accessor :table_name
-  attr_accessor :conditions
   attr_accessor :row
-  attr_accessor :grouped_key
 
   def initialize(struct, table_name)
-    @struct = struct
     @table_name = table_name
     @row = Row.new(struct.members)
+  end
+
+  def subquery_name
+    @table_name.to_s
+  end
+end
+
+class Query
+  attr_accessor :from
+
+  def initialize(from)
+    @from = from
     @conditions = []
+    @grouped_key = nil
+    @subquery_name = nil
+    @row = nil
   end
 
   def map(&blk)
-    result = blk.call(@row)
-    @row = Row.new(result.class.members, result)
+    if @row
+      return Query.new(self).map(&blk)
+    end
+
+    result = blk.call(@from.row)
+    set_row(Row.new(result.class.members, result))
+  end
+
+  def set_grouped_key(grouped_key)
+    @grouped_key = grouped_key
     self
   end
 
-  def where(&blk)
-    condition = blk.call(@row)
-    @conditions.push(condition)
+  def set_row(row)
+    @row = row
     self
+  end
+
+  def row
+    if @row
+      return @row
+    end
+
+    @from.row
   end
 
   def group_by(&blk)
-    result = blk.call(@row)
+    if @row
+      return Query.new(self).group_by(&blk)
+    end
+
+    result = blk.call(@from.row)
 
     if result.is_a?(Column)
       GroupBy.new(self, result)
@@ -170,10 +198,32 @@ class Table
     end
   end
 
+  def where(&blk)
+    if @row
+      return Query.new(self).where(&blk)
+    end
+
+    condition = blk.call(@from.row)
+    @conditions.push(condition)
+    self
+  end
+
+  def subquery_name=(value)
+    @subquery_name = value
+  end
+
+  def subquery_name
+    if @subquery_name.nil?
+      raise ArgumentError.new("The query #{self.inspect} doesn't have a subquery name")
+    end
+
+    @subquery_name
+  end
+
   def sql
     s = "select "
-    s += @row.sql
-    s += " from #{@table_name}"
+    s += row.sql
+    s += " from #{@from.subquery_name}"
 
     if @conditions.size > 0
       s += " where #{@conditions.map {|c| c.sql}.join(' and ')}"
@@ -184,5 +234,38 @@ class Table
     end
 
     s
+  end
+end
+
+def generate_sql(query)
+  queries = fill(query)
+  last_query = queries.pop
+
+  sql = ''
+
+  if queries.size > 0
+    sql += 'with '
+  end
+
+  queries.map.with_index do |query, index|
+    if index > 0
+      sql += ', '
+    end
+    query.subquery_name = "subquery#{index}"
+    sql += "#{query.subquery_name} as (\n#{query.sql}\n)\n"
+  end
+
+  sql += last_query.sql
+
+  sql
+end
+
+def fill(query)
+  if query.from.is_a?(Query)
+    queries = fill(query.from)
+    queries.push(query)
+    queries
+  elsif query.from.is_a?(Table)
+    [query]
   end
 end

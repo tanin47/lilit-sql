@@ -13,7 +13,7 @@ task :run do
 end
 
 Rake::TestTask.new do |t|
-  t.libs << "test"
+  t.libs.push("test", "test/helpers.rb")
   t.test_files = FileList['test/**/*_test.rb']
   t.verbose = true
 end
