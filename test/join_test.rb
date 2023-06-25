@@ -19,7 +19,7 @@ class JoinTest < Minitest::Test
 
     query = customers
       .join(cities) {|customer, city| customer.col(:id).eq(city.col(:customer_id))}
-      .join(heights) {|customer, _city, height| customer.col(:id).eq(height.col(:customer_id))}
+      .left_join(heights) {|customer, _city, height| customer.col(:id).eq(height.col(:customer_id))}
       .map { |customer, city, height| result.new(customer.col(:id), customer.col(:name), city.col(:name), height.col(:height))}
 
     expected = <<-EOF
@@ -31,7 +31,7 @@ select
 from customers
 join cities
 on customers.id = cities.customer_id
-join heights 
+left join heights 
 on customers.id = heights.customer_id
     EOF
 

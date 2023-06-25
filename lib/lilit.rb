@@ -2,10 +2,12 @@
 
 class From
   attr_accessor :source
+  attr_accessor :join_type
   attr_accessor :condition
 
-  def initialize(source, condition = nil)
+  def initialize(source, join_type = nil, condition = nil)
     @source = source
+    @join_type = join_type
     @condition = condition
   end
 
@@ -254,15 +256,11 @@ class Query
   end
 
   def join(other, &blk)
-    if @row || @conditions.size > 0
-      return Query.new(self).join(other, &blk)
-    end
+    perform_join(:join, other, &blk)
+  end
 
-    unvanilla
-    condition = blk.call(*(get_from_rows + other.rows))
-    @froms.push(From.new(other, condition))
-
-    self
+  def left_join(other, &blk)
+    perform_join(:left_join, other, &blk)
   end
 
   def where(&blk)
@@ -299,7 +297,13 @@ class Query
 
     @froms.each_with_index do |from, index|
       if index >= 1
-        s += " join"
+        if from.join_type == :join
+          s += " join"
+        elsif from.join_type == :left_join
+          s += " left join"
+        else
+          raise ArgumentError.new("The join type #{from.join_type} is not supoprted.")
+        end
       end
 
       s += " #{from.source.subquery_name}"
@@ -328,6 +332,19 @@ class Query
   def unvanilla
     @is_vanilla = false
   end
+
+  def perform_join(join_type, other, &blk)
+    if @row || @conditions.size > 0
+      return Query.new(self).send(:perform_join, join_type, other, &blk)
+    end
+
+    unvanilla
+    condition = blk.call(*(get_from_rows + other.rows))
+    @froms.push(From.new(other, join_type, condition))
+
+    self
+  end
+
 end
 
 def generate_sql(query)

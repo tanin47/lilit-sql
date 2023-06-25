@@ -20,7 +20,7 @@ query = Table.new(Customer, 'customers')
           .where {|c| c.name == 'test'}
           .map {|c| Result.new(c.level, c.name)}
 
-puts query.generate_sql
+puts generate_sql(query)
 ```
 
 will generate:
@@ -38,6 +38,7 @@ Tasks
 - [x] Support simple group by
 - [x] Support multiple maps that should generate sub-query
 - [x] Support multiple group bys
-- [ ] Support joins
+- [x] Support joins
+- [x] Support left joins
 - [ ] Implement the lookup framework based on the columns
   - 2 reports: debits-credits and income statement -- different starting point and ending point.
