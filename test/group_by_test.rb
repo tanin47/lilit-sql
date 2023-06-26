@@ -11,7 +11,7 @@ class GroupByTest < Minitest::Test
   def test_group_by
     result = Struct.new(:age, :count)
     query = Query.new(Table.new(Customer, 'customers'))
-                 .group_by {|c| c.col(:age) }
+                 .group_by {|c| c.age }
                  .aggregate { |grouped, _row| result.new(grouped, Aggregate.count) }
     expected = <<-EOF
 select 
@@ -28,10 +28,10 @@ EOF
     result = Struct.new(:level, :count)
     result2 = Struct.new(:level, :total, :count_level)
     query = Query.new(Table.new(Customer, 'customers'))
-                 .group_by {|c| c.col(:age) }
+                 .group_by {|c| c.age }
                  .aggregate { |grouped, _row| result.new(grouped, Aggregate.count) }
-                 .group_by {|c| c.col(:level) }
-                 .aggregate { |grouped, row| result2.new(grouped, Aggregate.sum(row.col(:count)), Aggregate.count)}
+                 .group_by {|c| c.level }
+                 .aggregate { |grouped, row| result2.new(grouped, Aggregate.sum(row.count), Aggregate.count)}
 
     expected = <<-EOF
 with subquery0 as (

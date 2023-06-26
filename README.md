@@ -52,3 +52,8 @@ Tasks
 - [x] Support left joins
 - [x] Implement the lookup framework based on the columns
   - 2 reports: debits-credits and income statement -- different starting point and ending point.
+- [ ] Support expressions e.g.
+  - [x] Support Plain Old Ruby Expressions
+  - [ ] Formatting currency with if-else and multiplication.
+- [ ] Support group by multiple keys
+- [ ] Support cumulative SQL with inequality operators 

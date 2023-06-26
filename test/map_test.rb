@@ -11,8 +11,8 @@ class MapTest < Minitest::Test
   def test_simple
     result = Struct.new(:level, :name)
     query = Query.new(Table.new(Customer, 'customers'))
-         .where {|c| c.col(:name).eq(Literal.new('test')).and(c.col(:age).eq(Literal.new(34)))}
-         .map {|c| result.new(c.col(:age), c.col(:name))}
+         .where {|c| c.name == 'test' and c.age == 34}
+         .map {|c| result.new(c.age, c.name)}
     expected = <<-EOF
 select
   customers.age as level,
@@ -28,10 +28,10 @@ EOF
     result = Struct.new(:level, :name)
     result2 = Struct.new(:level2, :name2)
     query = Query.new(Table.new(Customer, 'customers'))
-                 .where {|c| c.col(:name).eq(Literal.new('test')).and(c.col(:age).eq(Literal.new(34)))}
-                 .map {|c| result.new(c.col(:age), c.col(:name))}
-                 .where {|c| c.col(:level).eq(Literal.new(10))}
-                 .map {|c| result2.new(c.col(:level), c.col(:name))}
+                 .where {|c| c.name == 'test' and c.age == 34}
+                 .map {|c| result.new(c.age, c.name)}
+                 .where {|c| c.level == 10}
+                 .map {|c| result2.new(c.level, c.name)}
 
     expected = <<-EOF
 with subquery0 as (

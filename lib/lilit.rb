@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require 'ruby2ruby'
+require 'ruby_parser'
+require 'sourcify'
+
 class From
   attr_accessor :source
   attr_accessor :join_type
@@ -57,6 +61,14 @@ class Row
     found
   end
 
+  private def method_missing(symbol, *args)
+    begin
+      col(symbol)
+    rescue ArgumentError
+      super
+    end
+  end
+
   def has?(name)
     @columns.any? {|c| c.name == name}
   end
@@ -78,7 +90,11 @@ class Column
   end
 
   def eq(other)
-    Condition.new(self, "eq", other)
+    Condition.new(self, :eq, other)
+  end
+
+  def in(list)
+    Condition.new(self, :in, list)
   end
 
   def ref_sql
@@ -95,6 +111,14 @@ class Column
     end
     s += @name.to_s
     s
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == self.state
+  end
+
+  def state
+    self.instance_variables.map { |variable| self.instance_variable_get variable }
   end
 end
 
@@ -150,13 +174,23 @@ class Literal
   end
 
   def decl_sql
-    if @value.is_a?(Integer)
-      "#{value}"
+    if @value.nil?
+      "null"
+    elsif @value.is_a?(Integer) || @value.is_a?(Float)
+      "#{@value}"
     elsif @value.is_a?(String)
       "'#{@value}'"
     else
       raise NotImplementedError.new("Literal doesn't support render #{@value.class} (#{@value})")
     end
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == self.state
+  end
+
+  def state
+    self.instance_variables.map { |variable| self.instance_variable_get variable }
   end
 end
 
@@ -173,15 +207,25 @@ class Condition
   end
 
   def and(other)
-    Condition.new(self, "and", other)
+    Condition.new(self, :and, other)
   end
 
   def sql
-    if op == "and"
+    if op == :and
       "#{left.sql} and #{right.sql}"
-    elsif op == "eq"
+    elsif op == :eq
       "#{left.ref_sql} = #{right.ref_sql}"
+    elsif op == :in
+      "#{left.ref_sql} = (#{right.map {|r|r.ref_sql}.join(', ')})"
     end
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == self.state
+  end
+
+  def state
+    self.instance_variables.map { |variable| self.instance_variable_get variable }
   end
 end
 
@@ -219,7 +263,7 @@ class Query
       return Query.new(self).map(&blk)
     end
 
-    result = blk.call(*get_from_rows)
+    result = expr(&blk).call(*get_from_rows)
     set_row(Row.new(result.class.members, self, result))
   end
 
@@ -250,7 +294,7 @@ class Query
       return Query.new(self).group_by(&blk)
     end
 
-    result = blk.call(*get_from_rows)
+    result = expr(&blk).call(*get_from_rows)
 
     if result.is_a?(Column)
       GroupBy.new(self, result)
@@ -272,7 +316,7 @@ class Query
       return Query.new(self).where(&blk)
     end
 
-    condition = blk.call(*get_from_rows)
+    condition = expr(&blk).call(*get_from_rows)
     @conditions.push(condition)
     self
   end
@@ -337,12 +381,31 @@ class Query
       return Query.new(self).send(:perform_join, join_type, other, &blk)
     end
 
-    condition = blk.call(*(get_from_rows + other.rows))
+    condition = expr(&blk).call(*(get_from_rows + other.rows))
     @froms.push(From.new(other, join_type, condition))
 
     self
   end
+end
 
+class IfElse
+  def initialize(cond, true_result, false_result)
+    @condition = cond
+    @true_result = true_result
+    @false_result = false_result
+  end
+
+  def ref_sql
+    "if(#{@condition.ref_sql}, #{@true_result.ref_sql}, #{@false_result.ref_sql})"
+  end
+
+  def decl_sql
+    ref_sql
+  end
+end
+
+def ifElse(cond, true_result, false_result)
+  IfElse.new(cond, true_result, false_result)
 end
 
 def generate_sql(query)
@@ -382,4 +445,91 @@ def fill(query)
   end
   queries.push(query)
   queries
+end
+
+$ruby2ruby = Ruby2Ruby.new
+
+def search_for_expr_block(parsed)
+  # s(:iter, s(:call, nil, :expr)
+
+  if parsed[0] == :iter && parsed[1][0] == :call && parsed[1][1].nil? && parsed[1][2] == :expr
+    return parsed[3]
+  end
+
+  parsed.each do |component|
+    if component.is_a?(Sexp)
+      return search_for_expr_block(component)
+    end
+  end
+
+  nil
+end
+
+def rewrite(parsed)
+  parsed = parsed.map do |component|
+    if component.is_a?(Sexp)
+      rewrite(component)
+    else
+      component
+    end
+  end
+
+  if parsed[0] == :call && parsed[2] == :==
+    parsed[2] = :eq
+  elsif parsed[0] == :and
+    parsed = Sexp.new(
+      :call,
+      parsed[1],
+      :and,
+      parsed[2]
+    )
+  elsif parsed[0] == :str
+    parsed = Sexp.new(
+      :call,
+      Sexp.new(:const, :Literal),
+      :new,
+      Sexp.new(:str, parsed[1])
+    )
+  elsif parsed[0] == :lit && (parsed[1].is_a?(Integer) || parsed[1].is_a?(Float))
+    parsed = Sexp.new(
+      :call,
+      Sexp.new(:const, :Literal),
+      :new,
+      Sexp.new(:lit, parsed[1])
+    )
+  elsif parsed[0] == :case && parsed[2] && parsed[2][0] == :in
+    parsed = Sexp.new(
+      :call,
+      parsed[1],
+      :in,
+      parsed[2][1]
+    )
+  elsif parsed[0] == :if
+    parsed = Sexp.new(
+      :call,
+      nil,
+      :ifElse,
+      parsed[1],
+      parsed[2],
+      parsed[3],
+    )
+  elsif parsed[0] == :nil
+    parsed = Sexp.new(
+      :call,
+      Sexp.new(:const, :Literal),
+      :new,
+      Sexp.new(:nil)
+    )
+  end
+
+  parsed
+end
+
+def expr(&blk)
+  parsed = blk.to_sexp
+
+  parsed = rewrite(parsed)
+
+  code = $ruby2ruby.process(parsed)
+  eval(code, blk.binding)
 end

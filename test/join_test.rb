@@ -18,9 +18,9 @@ class JoinTest < Minitest::Test
     result = Struct.new(:customer_id, :name, :city, :height)
 
     query = customers
-      .join(cities) {|customer, city| customer.col(:id).eq(city.col(:customer_id))}
-      .left_join(heights) {|customer, _city, height| customer.col(:id).eq(height.col(:customer_id))}
-      .map { |customer, city, height| result.new(customer.col(:id), customer.col(:name), city.col(:name), height.col(:height))}
+      .join(cities) {|customer, city| customer.id == city.customer_id}
+      .left_join(heights) {|customer, _city, height| customer.id == height.customer_id}
+      .map { |customer, city, height| result.new(customer.id, customer.name, city.name, height.height)}
 
     expected = <<-EOF
 select

@@ -17,6 +17,7 @@ class LookupTest < Minitest::Test
               query.left_join(invoices) do |*tables|
                 left = tables.first
                 invoice = tables.last
+
                 left.col(:invoice).eq(invoice.col(:id))
               end
             else
@@ -28,6 +29,7 @@ class LookupTest < Minitest::Test
               query.left_join(charges) do |*tables|
                 left = tables.first
                 charge = tables.last
+
                 left.col(:charge).eq(charge.col(:id))
               end
             else

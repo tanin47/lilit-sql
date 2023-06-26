@@ -2,7 +2,10 @@ GEM
   remote: https://rubygems.org/
   specs:
     ast (2.4.2)
+    file-tail (1.2.0)
+      tins (~> 1.0)
     json (2.6.3)
+    method_source (1.0.0)
     minitest (5.18.1)
     parallel (1.23.0)
     parser (3.2.2.3)
@@ -26,6 +29,20 @@ GEM
     rubocop-ast (1.29.0)
       parser (>= 3.2.1.0)
     ruby-progressbar (1.13.0)
+    ruby2ruby (2.5.0)
+      ruby_parser (~> 3.1)
+      sexp_processor (~> 4.6)
+    ruby_parser (3.20.2)
+      sexp_processor (~> 4.16)
+    sexp_processor (4.17.0)
+    sourcify (0.5.0)
+      file-tail (>= 1.0.5)
+      ruby2ruby (>= 1.2.5)
+      ruby_parser (>= 2.0.5)
+      sexp_processor (>= 3.0.5)
+    sync (0.5.0)
+    tins (1.32.1)
+      sync
     unicode-display_width (2.4.2)
 
 PLATFORMS
@@ -33,9 +50,12 @@ PLATFORMS
   x86_64-darwin-19
 
 DEPENDENCIES
+  method_source
   minitest
   rake
   rubocop
+  ruby2ruby
+  sourcify
 
 BUNDLED WITH
    2.4.14
