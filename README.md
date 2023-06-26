@@ -56,5 +56,7 @@ Tasks
   - [x] Support Plain Old Ruby Expressions
   - [x] Formatting currency with if-else
   - [x] Support multiplication.
-- [ ] Support group by multiple keys
-- [ ] Support cumulative SQL with inequality operators 
+- [x] Support group by multiple keys
+- [x] Support cumulative SQL with inequality operators 
+  - [ ] Need to support self join where different aliases must be made.
+    - It's not a subquery. There must be another layer of redirection with aliases.

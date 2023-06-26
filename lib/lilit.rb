@@ -9,10 +9,19 @@ class From
   attr_accessor :join_type
   attr_accessor :condition
 
-  def initialize(source, join_type = nil, condition = nil)
+  def initialize(source, join_type = nil, condition = nil, alias_name = nil)
     @source = source
     @join_type = join_type
     @condition = condition
+    @alias_name = alias_name
+  end
+
+  def alias_name=(value)
+    @alias_name = value
+  end
+
+  def alias_name
+    @alias_name || @source.subquery_name
   end
 
   def rows
@@ -22,17 +31,17 @@ end
 
 class GroupBy
   attr_accessor :query
-  attr_accessor :key
+  attr_accessor :keys
 
-  def initialize(query, key)
+  def initialize(query, keys)
     @query = query
-    @key = key
+    @keys = keys
   end
 
   def aggregate(&blk)
-    result = blk.call(@key, *@query.rows)
+    result = blk.call(@keys, *@query.rows)
 
-    @query.set_grouped_key(@key)
+    @query.set_grouped_keys(@keys)
     @query.set_row(Row.new(result.class.members, @query, result))
   end
 end
@@ -101,8 +110,12 @@ class Column
     Expr.new(self, :*, other)
   end
 
+  def <=(other)
+    Expr.new(self, :<=, other)
+  end
+
   def ref_sql
-    "#{@parent.subquery_name}.#{@name}"
+    "#{@parent.alias_name}.#{@name}"
   end
 
   def decl_sql
@@ -230,8 +243,12 @@ class Expr
       end
     elsif op == :*
       "#{left.ref_sql} * #{right.ref_sql}"
+    elsif op == :<=
+      "#{left.ref_sql} <= #{right.ref_sql}"
     elsif op == :in
       "#{left.ref_sql} in (#{right.map {|r|r.ref_sql}.join(', ')})"
+    else
+      raise ArgumentError.new("#{op} is not supported by Expr")
     end
   end
 
@@ -282,8 +299,8 @@ class Query
     set_row(Row.new(result.class.members, self, result))
   end
 
-  def set_grouped_key(grouped_key)
-    @grouped_key = grouped_key
+  def set_grouped_keys(grouped_keys)
+    @grouped_keys = grouped_keys
     self
   end
 
@@ -312,6 +329,8 @@ class Query
     result = expr(&blk).call(*get_from_rows)
 
     if result.is_a?(Column)
+      GroupBy.new(self, [result])
+    elsif result.is_a?(Array)
       GroupBy.new(self, result)
     else
       raise NotImplementedError
@@ -336,10 +355,6 @@ class Query
     self
   end
 
-  def subquery_name=(value)
-    @subquery_name = value
-  end
-
   def subquery_name
     if is_vanilla
       return @froms.first.source.subquery_name
@@ -350,6 +365,10 @@ class Query
     end
 
     @subquery_name
+  end
+
+  def subquery_name=(value)
+    @subquery_name = value
   end
 
   def sql
@@ -370,6 +389,10 @@ class Query
 
       s += " #{from.source.subquery_name}"
 
+      if from.source.subquery_name != from.alias_name
+        s += " #{from.alias_name}"
+      end
+
       if from.condition
         s += " on #{from.condition.ref_sql}"
       end
@@ -379,8 +402,8 @@ class Query
       s += " where #{@conditions.map {|c| c.ref_sql}.join(' and ')}"
     end
 
-    if @grouped_key
-      s += " group by #{@grouped_key.ref_sql}"
+    if @grouped_keys
+      s += " group by #{@grouped_keys.map {|k| k.ref_sql}.join(', ')}"
     end
 
     s
@@ -396,8 +419,16 @@ class Query
       return Query.new(self).send(:perform_join, join_type, other, &blk)
     end
 
+    alias_name = nil
+    @froms.each do |from|
+      if from.source == other
+        alias_name = 'yoyo'
+        break
+      end
+    end
+
     condition = expr(&blk).call(*(get_from_rows + other.rows))
-    @froms.push(From.new(other, join_type, condition))
+    @froms.push(From.new(other, join_type, condition, alias_name))
 
     self
   end

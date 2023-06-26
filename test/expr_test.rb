@@ -10,13 +10,24 @@ class ExprTest < Minitest::Spec
     @table = Table.new(Struct.new(:id), 'tables')
   end
 
-  it 'simple' do
+  it 'eq' do
     result = expr do |row|
       row.name == 'test' and row.name == 10
     end
     row = Row.new([:name], @table)
     assert_equal(
       "tables.name = 'test' and tables.name = 10",
+      result.call(row).ref_sql
+    )
+  end
+
+  it 'lte' do
+    result = expr do |row|
+      row.name <= 10
+    end
+    row = Row.new([:name], @table)
+    assert_equal(
+      "tables.name <= 10",
       result.call(row).ref_sql
     )
   end

@@ -12,7 +12,7 @@ class GroupByTest < Minitest::Spec
     result = Struct.new(:age, :count)
     query = Query.new(Table.new(Customer, 'customers'))
                  .group_by {|c| c.age }
-                 .aggregate { |grouped, _row| result.new(grouped, Aggregate.count) }
+                 .aggregate { |groupeds, _row| result.new(groupeds[0], Aggregate.count) }
     expected = <<-EOF
 select 
   customers.age as age, 
@@ -29,9 +29,9 @@ EOF
     result2 = Struct.new(:level, :total, :count_level)
     query = Query.new(Table.new(Customer, 'customers'))
                  .group_by {|c| c.age }
-                 .aggregate { |grouped, _row| result.new(grouped, Aggregate.count) }
+                 .aggregate { |groupeds, _row| result.new(groupeds[0], Aggregate.count) }
                  .group_by {|c| c.level }
-                 .aggregate { |grouped, row| result2.new(grouped, Aggregate.sum(row.count), Aggregate.count)}
+                 .aggregate { |groupeds, row| result2.new(groupeds[0], Aggregate.sum(row.count), Aggregate.count)}
 
     expected = <<-EOF
 with subquery0 as (
@@ -40,6 +40,23 @@ with subquery0 as (
 
 select subquery0.level as level, sum(subquery0.count) as total, count(*) as count_level from subquery0 group by subquery0.level
 EOF
+
+    assert_content_equal(expected, generate_sql(query))
+  end
+
+  it 'groups by multiple keys' do
+    result = Struct.new(:age_bucket, :name, :count)
+    query = Query.new(Table.new(Customer, 'customers'))
+                 .group_by {|c| [c.age * 10, c.name] }
+                 .aggregate { |groupeds, _row| result.new(groupeds[0], groupeds[1], Aggregate.count) }
+    expected = <<-EOF
+select 
+  customers.age * 10 as age_bucket, 
+  customers.name as name, 
+  count(*) as count 
+from customers 
+group by customers.age * 10, customers.name
+    EOF
 
     assert_content_equal(expected, generate_sql(query))
   end
