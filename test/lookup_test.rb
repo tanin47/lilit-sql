@@ -4,7 +4,7 @@ require 'minitest/autorun'
 require_relative '../lib/lilit'
 require_relative 'helpers'
 
-class LookupTest < Minitest::Test
+class LookupTest < Minitest::Spec
 
   JournalEntry = Struct.new(:debit, :credit, :amount, :invoice, :charge)
   IncomeStatement = Struct.new(:account, :amount, :invoice)
@@ -39,7 +39,7 @@ class LookupTest < Minitest::Test
     query
   end
 
-  def test_income_statement
+  it 'generates income statement' do
     entries = Query.new(Table.new(IncomeStatement, 'income_statement'))
 
     result = Struct.new(:account, :amount, :invoice, :invoice_number)
@@ -68,7 +68,7 @@ EOF
     assert_content_equal(expected, generate_sql(query))
   end
 
-  def test_journal_entry
+  it 'generates journal entries' do
     entries = Query.new(Table.new(JournalEntry, 'journal_entries'))
 
     result = Struct.new(:debit, :credit, :amount, :invoice, :charge, :invoice_number, :charge_description)

@@ -4,11 +4,11 @@ require 'minitest/autorun'
 require_relative '../lib/lilit'
 require_relative 'helpers'
 
-class MapTest < Minitest::Test
+class MapTest < Minitest::Spec
 
   Customer = Struct.new(:id, :name, :age)
 
-  def test_simple
+  it 'maps' do
     result = Struct.new(:level, :name)
     query = Query.new(Table.new(Customer, 'customers'))
          .where {|c| c.name == 'test' and c.age == 34}
@@ -24,7 +24,7 @@ EOF
     assert_content_equal(expected, generate_sql(query))
   end
 
-  def test_multiple_maps
+  it 'maps multiple times' do
     result = Struct.new(:level, :name)
     result2 = Struct.new(:level2, :name2)
     query = Query.new(Table.new(Customer, 'customers'))

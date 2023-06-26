@@ -4,13 +4,13 @@ require 'minitest/autorun'
 require_relative '../lib/lilit'
 require_relative 'helpers'
 
-class JoinTest < Minitest::Test
+class JoinTest < Minitest::Spec
 
   Customer = Struct.new(:id, :name)
   City = Struct.new(:customer_id, :name)
   Height = Struct.new(:customer_id, :height)
 
-  def test_join
+  it 'joins' do
     customers = Query.new(Table.new(Customer, 'customers'))
     cities = Query.new(Table.new(City, 'cities'))
     heights = Query.new(Table.new(Height, 'heights'))

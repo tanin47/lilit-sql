@@ -4,11 +4,11 @@ require 'minitest/autorun'
 require_relative '../lib/lilit'
 require_relative 'helpers'
 
-class GroupByTest < Minitest::Test
+class GroupByTest < Minitest::Spec
 
   Customer = Struct.new(:id, :name, :age)
 
-  def test_group_by
+  it 'groups by' do
     result = Struct.new(:age, :count)
     query = Query.new(Table.new(Customer, 'customers'))
                  .group_by {|c| c.age }
@@ -24,7 +24,7 @@ EOF
     assert_content_equal(expected, generate_sql(query))
   end
 
-  def test_multiple_group_bys
+  it 'groups by multiple times' do
     result = Struct.new(:level, :count)
     result2 = Struct.new(:level, :total, :count_level)
     query = Query.new(Table.new(Customer, 'customers'))

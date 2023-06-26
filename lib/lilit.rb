@@ -90,11 +90,15 @@ class Column
   end
 
   def eq(other)
-    Condition.new(self, :eq, other)
+    Expr.new(self, :eq, other)
   end
 
   def in(list)
-    Condition.new(self, :in, list)
+    Expr.new(self, :in, list)
+  end
+
+  def *(other)
+    Expr.new(self, :*, other)
   end
 
   def ref_sql
@@ -194,8 +198,7 @@ class Literal
   end
 end
 
-class Condition
-
+class Expr
   attr_accessor :left
   attr_accessor :op
   attr_accessor :right
@@ -207,16 +210,28 @@ class Condition
   end
 
   def and(other)
-    Condition.new(self, :and, other)
+    Expr.new(self, :and, other)
   end
 
-  def sql
+  def ref_sql
     if op == :and
-      "#{left.sql} and #{right.sql}"
+      "#{left.ref_sql} and #{right.ref_sql}"
     elsif op == :eq
-      "#{left.ref_sql} = #{right.ref_sql}"
+      if right.is_a?(Literal) && right.value.nil?
+        "#{left.ref_sql} is #{right.ref_sql}"
+      else
+        "#{left.ref_sql} = #{right.ref_sql}"
+      end
+    elsif op == :ne
+      if right.is_a?(Literal) && right.value.nil?
+        "#{left.ref_sql} is not #{right.ref_sql}"
+      else
+        "#{left.ref_sql} != #{right.ref_sql}"
+      end
+    elsif op == :*
+      "#{left.ref_sql} * #{right.ref_sql}"
     elsif op == :in
-      "#{left.ref_sql} = (#{right.map {|r|r.ref_sql}.join(', ')})"
+      "#{left.ref_sql} in (#{right.map {|r|r.ref_sql}.join(', ')})"
     end
   end
 
@@ -356,12 +371,12 @@ class Query
       s += " #{from.source.subquery_name}"
 
       if from.condition
-        s += " on #{from.condition.sql}"
+        s += " on #{from.condition.ref_sql}"
       end
     end
 
     if @conditions.size > 0
-      s += " where #{@conditions.map {|c| c.sql}.join(' and ')}"
+      s += " where #{@conditions.map {|c| c.ref_sql}.join(' and ')}"
     end
 
     if @grouped_key
@@ -401,6 +416,14 @@ class IfElse
 
   def decl_sql
     ref_sql
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == self.state
+  end
+
+  def state
+    self.instance_variables.map { |variable| self.instance_variable_get variable }
   end
 end
 
