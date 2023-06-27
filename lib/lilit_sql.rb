@@ -91,6 +91,12 @@ class Row
   rescue ArgumentError
     super
   end
+
+  def respond_to_missing?(method_name, include_private = false)
+    !col(method_name).nil?
+  rescue ArgumentError
+    super
+  end
 end
 
 class Column
@@ -487,10 +493,10 @@ def generate_sql(query)
 
   sql += 'with ' if queries.size.positive?
 
-  queries.map.with_index do |query, index|
+  queries.map.with_index do |q, index|
     sql += ', ' if index.positive?
-    query.subquery_name = "subquery#{index}"
-    sql += "#{query.subquery_name} as (\n#{query.sql}\n)\n"
+    q.subquery_name = "subquery#{index}"
+    sql += "#{q.subquery_name} as (\n#{q.sql}\n)\n"
   end
 
   sql += last_query.sql
@@ -516,18 +522,6 @@ end
 
 $ruby2ruby = Ruby2Ruby.new
 
-def search_for_expr_block(parsed)
-  # s(:iter, s(:call, nil, :expr)
-
-  return parsed[3] if parsed[0] == :iter && parsed[1][0] == :call && parsed[1][1].nil? && parsed[1][2] == :expr
-
-  parsed.each do |component|
-    return search_for_expr_block(component) if component.is_a?(Sexp)
-  end
-
-  nil
-end
-
 def rewrite(parsed)
   parsed = parsed.map do |component|
     if component.is_a?(Sexp)
@@ -537,8 +531,17 @@ def rewrite(parsed)
     end
   end
 
-  if parsed[0] == :call && parsed[2] == :==
-    parsed[2] = :eq
+  if parsed[0] == :call
+    if parsed[2] == :==
+      parsed[2] = :eq
+    elsif parsed[2] == :nil?
+      parsed = Sexp.new(
+        :call,
+        parsed[1],
+        :eq,
+        Sexp.new(:nil)
+      )
+    end
   elsif parsed[0] == :and
     parsed = Sexp.new(
       :call,

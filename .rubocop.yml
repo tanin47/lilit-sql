@@ -1,0 +1,26 @@
+AllCops:
+  NewCops: enable
+
+Metrics:
+  Enabled: false
+
+Naming:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Lint/StructNewOverride:
+  Enabled: false
+
+Style/GlobalVars:
+  Enabled: false
+
+Security/Eval:
+  Enabled: false
+
+Style/SymbolProc:
+  Enabled: false
+
+Layout/LineLength:
+  Enabled: false

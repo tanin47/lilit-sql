@@ -14,7 +14,7 @@ class WaterfallTest < Minitest::Spec
          .where { |entry| lit(start_year) <= entry.year and entry.year <= end_year }
          .group_by { |entry| [entry.person, entry.year] }
          .aggregate { |keys, entry| Entry.new(keys[0], keys[1], Aggregate.sum(entry.amount)) }
-         .group_by(&:person)
+         .group_by { |entry| entry.person }
          .aggregate do |keys, entry|
            values = [keys[0]] + (start_year..end_year).to_a.map do |year|
              if entry.year == year

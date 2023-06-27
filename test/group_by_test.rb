@@ -10,7 +10,7 @@ class GroupByTest < Minitest::Spec
   it 'groups by' do
     result = Struct.new(:age, :count)
     query = Query.from(Table.new(Customer, 'customers'))
-                 .group_by(&:age)
+                 .group_by { |c| c.age }
                  .aggregate { |keys, _row| result.new(keys[0], Aggregate.count) }
     expected = <<~EOF
       select#{' '}
@@ -27,9 +27,9 @@ class GroupByTest < Minitest::Spec
     result = Struct.new(:level, :count)
     result2 = Struct.new(:level, :total, :count_level)
     query = Query.from(Table.new(Customer, 'customers'))
-                 .group_by(&:age)
+                 .group_by { |c| c.age }
                  .aggregate { |keys, _row| result.new(keys[0], Aggregate.count) }
-                 .group_by(&:level)
+                 .group_by { |c| c.level }
                  .aggregate { |keys, row| result2.new(keys[0], Aggregate.sum(row.count), Aggregate.count) }
 
     expected = <<~EOF
