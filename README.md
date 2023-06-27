@@ -176,7 +176,9 @@ mrr_changes = Query.from(Table.new(MrrChange, 'mrr_changes'))
 query = mrr_changes
   .left_join(mrr_changes) {|main, prior| prior.year <= main.year}
   .group_by {|main, _prior| main.year}
-  .aggregate {|keys, _main_row, prior_row| Result.new(keys[0], Aggregate.sum(prior_row.amount_change)) }
+  .aggregate do |keys, _main_row, prior_row| 
+    Result.new(keys[0], Aggregate.sum(prior_row.amount_change))
+  end
 
 puts generate_sql(query)
 
@@ -196,6 +198,55 @@ puts generate_sql(query)
 # group by q.year
 ```
 
+A dynamic column example:
+
+```ruby
+Entry = Struct.new(:person, :year, :amount)
+
+def build(start_year, end_year)
+  cols = [:person] + (start_year..end_year).map {|y| "year_#{y}".to_sym}.to_a
+  row = Struct.new(*cols)
+  Query.from(Table.new(Entry, 'entries'))
+       .where {|entry| lit(start_year) <= entry.year and entry.year <= end_year}
+       .group_by {|entry| [entry.person, entry.year]}
+       .aggregate {|keys, entry| Entry.new(keys[0], keys[1], Aggregate.sum(entry.amount))}
+       .group_by {|entry| entry.person}
+       .aggregate do |keys, entry|
+         values = [keys[0]] + (start_year..end_year).to_a.map do |year|
+           if entry.year == year
+             Aggregate.sum(entry.amount)
+           else
+             0
+           end
+         end
+         row.new(*values)
+       end
+end
+
+puts generate_sql(build(2016, 2020))
+
+# Output:
+# with subquery0 as (
+#   select
+#     person,
+#     year,
+#     sum(amount) as amount
+#   from entries
+#   where 2016 <= year and year <= 2020
+#   group by person, year
+# )
+# 
+# select
+#   person,
+#   if(year = 2016, sum(amount), 0) as year_2016,
+#   if(year = 2017, sum(amount), 0) as year_2017,
+#   if(year = 2018, sum(amount), 0) as year_2018,
+#   if(year = 2019, sum(amount), 0) as year_2019,
+#   if(year = 2020, sum(amount), 0) as year_2020
+# from subquery0
+# group by person
+```
+
 Tasks
 ------
 - [x] Support simple filter
@@ -212,7 +263,9 @@ Tasks
   - [x] Support multiplication.
 - [x] Support group by multiple keys
 - [x] Support cumulative SQL with inequality operators 
-- [ ] Refactor Expr
+- [x] Add the waterfall example
+- [x] Fix the integer and string literal
+- [ ] Refactor Expr. Everything is an expression basically.
 - [ ] Support unnest
 - [ ] Support window function
-- [ ] Make it support Presto
+- [ ] Fully support Presto's syntax

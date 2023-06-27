@@ -5,9 +5,7 @@ require 'ruby_parser'
 require 'sourcify'
 
 class From
-  attr_accessor :source
-  attr_accessor :join_type
-  attr_accessor :condition
+  attr_accessor :source, :join_type, :condition
 
   def initialize(source, join_type = nil, condition = nil, alias_name = nil)
     @source = source
@@ -16,9 +14,7 @@ class From
     @alias_name = alias_name
   end
 
-  def alias_name=(value)
-    @alias_name = value
-  end
+  attr_writer :alias_name
 
   def raw_alias_name
     @alias_name
@@ -34,8 +30,7 @@ class From
 end
 
 class GroupBy
-  attr_accessor :query
-  attr_accessor :keys
+  attr_accessor :query, :keys
 
   def initialize(query, keys)
     @query = query
@@ -43,7 +38,7 @@ class GroupBy
   end
 
   def aggregate(&blk)
-    result = blk.call(@keys, *@query.rows)
+    result = expr(&blk).call(@keys, *@query.rows)
 
     Query.new(
       @query.froms + [],
@@ -70,37 +65,36 @@ class Row
   end
 
   def col(name)
-    found = @columns.select {|c| c.name == name}.first
+    found = @columns.select { |c| c.name == name }.first
 
-    raise ArgumentError.new("#{name} is not found in the columns: #{@columns.map {|c|c.name}.inspect}") if found.nil?
+    raise ArgumentError, "#{name} is not found in the columns: #{@columns.map(&:name).inspect}" if found.nil?
 
     found
   end
 
   def with_from(from)
-    Row.new(@columns.map {|c| c.with_from(from)})
-  end
-
-  private def method_missing(symbol, *args)
-    begin
-      col(symbol)
-    rescue ArgumentError
-      super
-    end
+    Row.new(@columns.map { |c| c.with_from(from) })
   end
 
   def has?(name)
-    @columns.any? {|c| c.name == name}
+    @columns.any? { |c| c.name == name }
   end
 
   def decl_sql
-    @columns.map {|c|c.decl_sql}.join(', ')
+    @columns.map(&:decl_sql).join(', ')
+  end
+
+  private
+
+  def method_missing(symbol, *args)
+    col(symbol)
+  rescue ArgumentError
+    super
   end
 end
 
 class Column
-  attr_accessor :name
-  attr_accessor :origin
+  attr_accessor :name, :origin
 
   def initialize(name, origin = nil, from = nil)
     @name = name
@@ -140,25 +134,22 @@ class Column
                    else
                      origin.ref_sql
                    end
-      if origin_sql != @name.to_s
-        s += "#{origin_sql} as "
-      end
+      s += "#{origin_sql} as " if origin_sql != @name.to_s
     end
     s += @name.to_s
     s
   end
 
   def ==(other)
-    other.class == self.class && other.state == self.state
+    other.class == self.class && other.state == state
   end
 
   def state
-    self.instance_variables.map { |variable| self.instance_variable_get variable }
+    instance_variables.map { |variable| instance_variable_get variable }
   end
 end
 
 class Count < Column
-
   def initialize
     super(nil)
   end
@@ -168,12 +159,11 @@ class Count < Column
   end
 
   def decl_sql
-    "count(*)"
+    'count(*)'
   end
 end
 
 class Sum < Column
-
   def initialize(col)
     super(nil, col)
   end
@@ -210,34 +200,48 @@ class Literal
 
   def decl_sql
     if @value.nil?
-      "null"
+      'null'
     elsif @value.is_a?(Integer) || @value.is_a?(Float)
-      "#{@value}"
+      @value.to_s
     elsif @value.is_a?(String)
       "'#{@value}'"
     else
-      raise NotImplementedError.new("Literal doesn't support render #{@value.class} (#{@value})")
+      raise NotImplementedError, "Literal doesn't support render #{@value.class} (#{@value})"
     end
   end
 
+  def <=(other)
+    Expr.new(self, :<=, other)
+  end
+
   def ==(other)
-    other.class == self.class && other.state == self.state
+    other.class == self.class && other.state == state
   end
 
   def state
-    self.instance_variables.map { |variable| self.instance_variable_get variable }
+    instance_variables.map { |variable| instance_variable_get variable }
+  end
+end
+
+def lit(value)
+  return value if value.is_a?(Literal)
+
+  if value.is_a?(String) || value.is_a?(Integer) || value.is_a?(Float) || value.nil?
+    Literal.new(value)
+  elsif value.is_a?(Array)
+    value.map { |v| lit(v) }
+  else
+    value
   end
 end
 
 class Expr
-  attr_accessor :left
-  attr_accessor :op
-  attr_accessor :right
+  attr_accessor :left, :op, :right
 
   def initialize(left, op, right)
     @left = left
     @op = op
-    @right = right
+    @right = lit(right)
   end
 
   def and(other)
@@ -245,43 +249,43 @@ class Expr
   end
 
   def ref_sql
-    if op == :and
+    case op
+    when :and
       "#{left.ref_sql} and #{right.ref_sql}"
-    elsif op == :eq
+    when :eq
       if right.is_a?(Literal) && right.value.nil?
         "#{left.ref_sql} is #{right.ref_sql}"
       else
         "#{left.ref_sql} = #{right.ref_sql}"
       end
-    elsif op == :ne
+    when :ne
       if right.is_a?(Literal) && right.value.nil?
         "#{left.ref_sql} is not #{right.ref_sql}"
       else
         "#{left.ref_sql} != #{right.ref_sql}"
       end
-    elsif op == :*
+    when :*
       "#{left.ref_sql} * #{right.ref_sql}"
-    elsif op == :<=
+    when :<=
       "#{left.ref_sql} <= #{right.ref_sql}"
-    elsif op == :in
-      "#{left.ref_sql} in (#{right.map {|r|r.ref_sql}.join(', ')})"
+    when :in
+      "#{left.ref_sql} in (#{right.map(&:ref_sql).join(', ')})"
     else
-      raise ArgumentError.new("#{op} is not supported by Expr")
+      raise ArgumentError, "#{op} is not supported by Expr"
     end
   end
 
   def ==(other)
-    other.class == self.class && other.state == self.state
+    other.class == self.class && other.state == state
   end
 
   def state
-    self.instance_variables.map { |variable| self.instance_variable_get variable }
+    instance_variables.map { |variable| instance_variable_get variable }
   end
 end
 
 class Table
-  attr_accessor :table_name
-  attr_accessor :rows
+  attr_accessor :table_name, :rows
 
   def initialize(struct, table_name)
     @table_name = table_name
@@ -294,10 +298,7 @@ class Table
 end
 
 class Query
-  attr_accessor :froms
-  attr_accessor :conditions
-  attr_accessor :grouped_keys
-  attr_accessor :row
+  attr_accessor :froms, :conditions, :grouped_keys, :row
 
   def initialize(froms, conditions = [], grouped_keys = [], row = nil)
     @froms = froms + []
@@ -316,9 +317,7 @@ class Query
   end
 
   def map(&blk)
-    if @row
-      return Query.from(self).map(&blk)
-    end
+    return Query.from(self).map(&blk) if @row
 
     result = expr(&blk).call(*get_from_rows)
     Query.new(
@@ -330,21 +329,17 @@ class Query
   end
 
   def has?(column_name)
-    rows.any? {|r| r.has?(column_name)}
+    rows.any? { |r| r.has?(column_name) }
   end
 
   def rows
-    if @row
-      return [@row]
-    end
+    return [@row] if @row
 
     get_from_rows
   end
 
   def group_by(&blk)
-    if @row
-      return Query.from(self).group_by(&blk)
-    end
+    return Query.from(self).group_by(&blk) if @row
 
     result = expr(&blk).call(*get_from_rows)
 
@@ -366,9 +361,7 @@ class Query
   end
 
   def where(&blk)
-    if @row
-      return Query.from(self).where(&blk)
-    end
+    return Query.from(self).where(&blk) if @row
 
     condition = expr(&blk).call(*get_from_rows)
     Query.new(
@@ -380,79 +373,62 @@ class Query
   end
 
   def subquery_name
-    if is_vanilla
-      return @froms.first.source.subquery_name
-    end
+    return @froms.first.source.subquery_name if is_vanilla
 
-    if @subquery_name.nil?
-      raise ArgumentError.new("The query #{self.inspect} doesn't have a subquery name")
-    end
+    raise ArgumentError, "The query #{inspect} doesn't have a subquery name" if @subquery_name.nil?
 
     @subquery_name
   end
 
-  def subquery_name=(value)
-    @subquery_name = value
-  end
+  attr_writer :subquery_name
 
   def sql
-    s = "select "
-    s += rows.map {|r| r.decl_sql}.join(', ')
-    s += " from"
+    s = 'select '
+    s += rows.map(&:decl_sql).join(', ')
+    s += ' from'
 
     @froms.each_with_index do |from, index|
       if index >= 1
         if from.join_type == :join
-          s += " join"
+          s += ' join'
         elsif from.join_type == :left_join
-          s += " left join"
+          s += ' left join'
         else
-          raise ArgumentError.new("The join type #{from.join_type} is not supoprted.")
+          raise ArgumentError, "The join type #{from.join_type} is not supoprted."
         end
       end
 
       s += " #{from.source.subquery_name}"
 
-      if from.source.subquery_name != from.alias_name
-        s += " #{from.alias_name}"
-      end
+      s += " #{from.alias_name}" if from.source.subquery_name != from.alias_name
 
-      if from.condition
-        s += " on #{from.condition.ref_sql}"
-      end
+      s += " on #{from.condition.ref_sql}" if from.condition
     end
 
-    if @conditions.size > 0
-      s += " where #{@conditions.map {|c| c.ref_sql}.join(' and ')}"
-    end
+    s += " where #{@conditions.map(&:ref_sql).join(' and ')}" if @conditions.size.positive?
 
-    if @grouped_keys.size > 0
-      s += " group by #{@grouped_keys.map {|k| k.ref_sql}.join(', ')}"
-    end
+    s += " group by #{@grouped_keys.map(&:ref_sql).join(', ')}" if @grouped_keys.size.positive?
 
     s
   end
 
   private
+
   def get_from_rows
-    @froms.map {|f| f.rows.map {|r|r.with_from(f)}}.flatten
+    @froms.map { |f| f.rows.map { |r| r.with_from(f) } }.flatten
   end
 
   def get_next_alias
-    alias_names = @froms.map {|f|f.raw_alias_name}.compact
+    alias_names = @froms.map(&:raw_alias_name).compact
     index = 0
     alias_names.sort.each do |name|
-      if name == "alias#{index}"
-        index += 1
-      end
+      index += 1 if name == "alias#{index}"
     end
     "alias#{index}"
   end
 
   def perform_join(join_type, other, &blk)
-    if @row || @conditions.size > 0
-      return Query.from(self).send(:perform_join, join_type, other, &blk)
-    end
+    return Query.from(self).send(:perform_join, join_type, other, &blk) if @row || @conditions.size.positive?
 
     alias_name = nil
     @froms.each do |from|
@@ -463,7 +439,7 @@ class Query
     end
 
     other_from = From.new(other, join_type, nil, alias_name)
-    condition = expr(&blk).call(*(get_from_rows + other_from.rows.map {|r|r.with_from(other_from)}))
+    condition = expr(&blk).call(*(get_from_rows + other_from.rows.map { |r| r.with_from(other_from) }))
     other_from.condition = condition
 
     Query.new(
@@ -477,9 +453,9 @@ end
 
 class IfElse
   def initialize(cond, true_result, false_result)
-    @condition = cond
-    @true_result = true_result
-    @false_result = false_result
+    @condition = lit(cond)
+    @true_result = lit(true_result)
+    @false_result = lit(false_result)
   end
 
   def ref_sql
@@ -491,11 +467,11 @@ class IfElse
   end
 
   def ==(other)
-    other.class == self.class && other.state == self.state
+    other.class == self.class && other.state == state
   end
 
   def state
-    self.instance_variables.map { |variable| self.instance_variable_get variable }
+    instance_variables.map { |variable| instance_variable_get variable }
   end
 end
 
@@ -509,14 +485,10 @@ def generate_sql(query)
 
   sql = ''
 
-  if queries.size > 0
-    sql += 'with '
-  end
+  sql += 'with ' if queries.size.positive?
 
   queries.map.with_index do |query, index|
-    if index > 0
-      sql += ', '
-    end
+    sql += ', ' if index.positive?
     query.subquery_name = "subquery#{index}"
     sql += "#{query.subquery_name} as (\n#{query.sql}\n)\n"
   end
@@ -531,11 +503,11 @@ def fill(query)
 
   queries = []
   query.froms.each do |from|
-    if from.source.is_a?(Query)
-      subqueries = fill(from.source)
-      subqueries.each do |subquery|
-        queries.push(subquery)
-      end
+    next unless from.source.is_a?(Query)
+
+    subqueries = fill(from.source)
+    subqueries.each do |subquery|
+      queries.push(subquery)
     end
   end
   queries.push(query)
@@ -547,14 +519,10 @@ $ruby2ruby = Ruby2Ruby.new
 def search_for_expr_block(parsed)
   # s(:iter, s(:call, nil, :expr)
 
-  if parsed[0] == :iter && parsed[1][0] == :call && parsed[1][1].nil? && parsed[1][2] == :expr
-    return parsed[3]
-  end
+  return parsed[3] if parsed[0] == :iter && parsed[1][0] == :call && parsed[1][1].nil? && parsed[1][2] == :expr
 
   parsed.each do |component|
-    if component.is_a?(Sexp)
-      return search_for_expr_block(component)
-    end
+    return search_for_expr_block(component) if component.is_a?(Sexp)
   end
 
   nil
@@ -578,20 +546,6 @@ def rewrite(parsed)
       :and,
       parsed[2]
     )
-  elsif parsed[0] == :str
-    parsed = Sexp.new(
-      :call,
-      Sexp.new(:const, :Literal),
-      :new,
-      Sexp.new(:str, parsed[1])
-    )
-  elsif parsed[0] == :lit && (parsed[1].is_a?(Integer) || parsed[1].is_a?(Float))
-    parsed = Sexp.new(
-      :call,
-      Sexp.new(:const, :Literal),
-      :new,
-      Sexp.new(:lit, parsed[1])
-    )
   elsif parsed[0] == :case && parsed[2] && parsed[2][0] == :in
     parsed = Sexp.new(
       :call,
@@ -606,14 +560,7 @@ def rewrite(parsed)
       :ifElse,
       parsed[1],
       parsed[2],
-      parsed[3],
-    )
-  elsif parsed[0] == :nil
-    parsed = Sexp.new(
-      :call,
-      Sexp.new(:const, :Literal),
-      :new,
-      Sexp.new(:nil)
+      parsed[3]
     )
   end
 

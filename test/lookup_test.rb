@@ -5,7 +5,6 @@ require_relative '../lib/lilit_sql'
 require_relative 'helpers'
 
 class LookupTest < Minitest::Spec
-
   JournalEntry = Struct.new(:debit, :credit, :amount, :currency, :invoice, :charge)
   IncomeStatement = Struct.new(:account, :amount, :currency, :invoice)
   Invoice = Struct.new(:id, :number)
@@ -55,29 +54,29 @@ class LookupTest < Minitest::Spec
     result = Struct.new(:account, :amount, :currency, :invoice, :invoice_number)
 
     query = with_lookup(entries)
-      .map do |entry, invoice|
-        result.new(
-          entry.account,
-          format_currency(entry.amount, entry.currency),
-          entry.currency,
-          entry.invoice,
-          invoice.number,
-       )
-      end
+            .map do |entry, invoice|
+      result.new(
+        entry.account,
+        format_currency(entry.amount, entry.currency),
+        entry.currency,
+        entry.invoice,
+        invoice.number
+      )
+    end
 
-    expected = <<-EOF
-select
-  income_statement.account as account,
-  if(income_statement.currency in ('krw', 'jpy'), 
-     income_statement.amount, 
-     income_statement.amount * 0.01) as amount,
-  income_statement.currency as currency,
-  income_statement.invoice as invoice,
-  invoices.number as invoice_number
-from income_statement
-left join invoices
-on income_statement.invoice = invoices.id
-EOF
+    expected = <<~EOF
+      select
+        income_statement.account as account,
+        if(income_statement.currency in ('krw', 'jpy'),#{' '}
+           income_statement.amount,#{' '}
+           income_statement.amount * 0.01) as amount,
+        income_statement.currency as currency,
+        income_statement.invoice as invoice,
+        invoices.number as invoice_number
+      from income_statement
+      left join invoices
+      on income_statement.invoice = invoices.id
+    EOF
 
     assert_content_equal(expected, generate_sql(query))
   end
@@ -88,7 +87,7 @@ EOF
     result = Struct.new(:debit, :credit, :amount, :currency, :invoice, :charge, :invoice_number, :charge_description)
 
     query = with_lookup(entries)
-              .map do |entry, invoice, charge|
+            .map do |entry, invoice, charge|
       formatted = format_currency(entry.amount, entry.currency)
       result.new(
         entry.debit,
@@ -102,23 +101,23 @@ EOF
       )
     end
 
-    expected = <<-EOF
-select
-  journal_entries.debit as debit,
-  journal_entries.credit as credit,
-  if(journal_entries.currency in ('krw', 'jpy'), 
-     journal_entries.amount, 
-     journal_entries.amount * 0.01) as amount,
-  journal_entries.currency as currency,
-  journal_entries.invoice as invoice,
-  journal_entries.charge as charge,
-  invoices.number as invoice_number,
-  charges.description as charge_description
-from journal_entries
-left join invoices
-on journal_entries.invoice = invoices.id
-left join charges
-on journal_entries.charge = charges.id
+    expected = <<~EOF
+      select
+        journal_entries.debit as debit,
+        journal_entries.credit as credit,
+        if(journal_entries.currency in ('krw', 'jpy'),#{' '}
+           journal_entries.amount,#{' '}
+           journal_entries.amount * 0.01) as amount,
+        journal_entries.currency as currency,
+        journal_entries.invoice as invoice,
+        journal_entries.charge as charge,
+        invoices.number as invoice_number,
+        charges.description as charge_description
+      from journal_entries
+      left join invoices
+      on journal_entries.invoice = invoices.id
+      left join charges
+      on journal_entries.charge = charges.id
     EOF
 
     assert_content_equal(expected, generate_sql(query))
