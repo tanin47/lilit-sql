@@ -20,6 +20,10 @@ class From
     @alias_name = value
   end
 
+  def raw_alias_name
+    @alias_name
+  end
+
   def alias_name
     @alias_name || @source.subquery_name
   end
@@ -41,19 +45,22 @@ class GroupBy
   def aggregate(&blk)
     result = blk.call(@keys, *@query.rows)
 
-    @query.set_grouped_keys(@keys)
-    @query.set_row(Row.new(result.class.members, @query, result))
+    Query.new(
+      @query.froms + [],
+      @query.conditions + [],
+      @keys,
+      Row.new(result.class.members, result)
+    )
   end
 end
 
 class Row
-  attr_accessor :parent
   attr_accessor :columns
 
-  def initialize(columns, parent, origins = [])
+  def initialize(columns, origins = [])
     @columns = columns.zip(origins).map do |col, origin|
       if col.is_a?(Symbol)
-        Column.new(col, parent, origin)
+        Column.new(col, origin)
       elsif col.is_a?(Column)
         col
       else
@@ -68,6 +75,10 @@ class Row
     raise ArgumentError.new("#{name} is not found in the columns: #{@columns.map {|c|c.name}.inspect}") if found.nil?
 
     found
+  end
+
+  def with_from(from)
+    Row.new(@columns.map {|c| c.with_from(from)})
   end
 
   private def method_missing(symbol, *args)
@@ -89,13 +100,16 @@ end
 
 class Column
   attr_accessor :name
-  attr_accessor :parent
   attr_accessor :origin
 
-  def initialize(name, parent, origin = nil)
+  def initialize(name, origin = nil, from = nil)
     @name = name
-    @parent = parent
     @origin = origin
+    @from = from
+  end
+
+  def with_from(from)
+    Column.new(@name, @origin, from)
   end
 
   def eq(other)
@@ -115,15 +129,19 @@ class Column
   end
 
   def ref_sql
-    "#{@parent.alias_name}.#{@name}"
+    "#{@from.alias_name}.#{@name}"
   end
 
   def decl_sql
     s = ''
     if origin
-      origin_sql = origin.ref_sql
+      origin_sql = if origin.is_a?(Proc)
+                     origin.call.ref_sql
+                   else
+                     origin.ref_sql
+                   end
       if origin_sql != @name.to_s
-        s += "#{origin.ref_sql} as "
+        s += "#{origin_sql} as "
       end
     end
     s += @name.to_s
@@ -142,7 +160,7 @@ end
 class Count < Column
 
   def initialize
-    super(nil, nil, nil)
+    super(nil)
   end
 
   def ref_sql
@@ -157,7 +175,7 @@ end
 class Sum < Column
 
   def initialize(col)
-    super(nil, nil, col)
+    super(nil, col)
   end
 
   def ref_sql
@@ -267,7 +285,7 @@ class Table
 
   def initialize(struct, table_name)
     @table_name = table_name
-    @rows = [Row.new(struct.members, self)]
+    @rows = [Row.new(struct.members)]
   end
 
   def subquery_name
@@ -277,36 +295,38 @@ end
 
 class Query
   attr_accessor :froms
+  attr_accessor :conditions
+  attr_accessor :grouped_keys
+  attr_accessor :row
 
-  def initialize(from)
-    @froms = [From.new(from)]
-    @conditions = []
-    @grouped_key = nil
+  def initialize(froms, conditions = [], grouped_keys = [], row = nil)
+    @froms = froms + []
+    @conditions = conditions + []
+    @grouped_keys = grouped_keys + []
+    @row = row
     @subquery_name = nil
-    @row = nil
+  end
+
+  def self.from(query)
+    new([From.new(query)])
   end
 
   def is_vanilla
-    @froms.size == 1 && @conditions.empty? && @grouped_key.nil? && @row.nil?
+    @froms.size == 1 && @conditions.empty? && @grouped_keys.empty? && @row.nil?
   end
 
   def map(&blk)
     if @row
-      return Query.new(self).map(&blk)
+      return Query.from(self).map(&blk)
     end
 
     result = expr(&blk).call(*get_from_rows)
-    set_row(Row.new(result.class.members, self, result))
-  end
-
-  def set_grouped_keys(grouped_keys)
-    @grouped_keys = grouped_keys
-    self
-  end
-
-  def set_row(row)
-    @row = row
-    self
+    Query.new(
+      @froms,
+      @conditions,
+      @grouped_keys,
+      Row.new(result.class.members, result)
+    )
   end
 
   def has?(column_name)
@@ -323,7 +343,7 @@ class Query
 
   def group_by(&blk)
     if @row
-      return Query.new(self).group_by(&blk)
+      return Query.from(self).group_by(&blk)
     end
 
     result = expr(&blk).call(*get_from_rows)
@@ -347,12 +367,16 @@ class Query
 
   def where(&blk)
     if @row
-      return Query.new(self).where(&blk)
+      return Query.from(self).where(&blk)
     end
 
     condition = expr(&blk).call(*get_from_rows)
-    @conditions.push(condition)
-    self
+    Query.new(
+      @froms,
+      @conditions + [condition],
+      @grouped_keys,
+      @row
+    )
   end
 
   def subquery_name
@@ -402,7 +426,7 @@ class Query
       s += " where #{@conditions.map {|c| c.ref_sql}.join(' and ')}"
     end
 
-    if @grouped_keys
+    if @grouped_keys.size > 0
       s += " group by #{@grouped_keys.map {|k| k.ref_sql}.join(', ')}"
     end
 
@@ -411,26 +435,43 @@ class Query
 
   private
   def get_from_rows
-    @froms.map {|f| f.rows}.flatten
+    @froms.map {|f| f.rows.map {|r|r.with_from(f)}}.flatten
+  end
+
+  def get_next_alias
+    alias_names = @froms.map {|f|f.raw_alias_name}.compact
+    index = 0
+    alias_names.sort.each do |name|
+      if name == "alias#{index}"
+        index += 1
+      end
+    end
+    "alias#{index}"
   end
 
   def perform_join(join_type, other, &blk)
     if @row || @conditions.size > 0
-      return Query.new(self).send(:perform_join, join_type, other, &blk)
+      return Query.from(self).send(:perform_join, join_type, other, &blk)
     end
 
     alias_name = nil
     @froms.each do |from|
       if from.source == other
-        alias_name = 'yoyo'
+        alias_name = get_next_alias
         break
       end
     end
 
-    condition = expr(&blk).call(*(get_from_rows + other.rows))
-    @froms.push(From.new(other, join_type, condition, alias_name))
+    other_from = From.new(other, join_type, nil, alias_name)
+    condition = expr(&blk).call(*(get_from_rows + other_from.rows.map {|r|r.with_from(other_from)}))
+    other_from.condition = condition
 
-    self
+    Query.new(
+      @froms + [other_from],
+      @conditions,
+      @grouped_keys,
+      @row
+    )
   end
 end
 
@@ -498,7 +539,7 @@ def fill(query)
     end
   end
   queries.push(query)
-  queries
+  queries.uniq
 end
 
 $ruby2ruby = Ruby2Ruby.new

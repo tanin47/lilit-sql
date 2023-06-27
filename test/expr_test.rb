@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/lilit'
+require_relative '../lib/lilit_sql'
 require_relative 'helpers'
 
 class ExprTest < Minitest::Spec
 
   before do
-    @table = Table.new(Struct.new(:id), 'tables')
+    @from = From.new(Table.new(Struct.new(:id), 'tables'))
   end
 
   it 'eq' do
     result = expr do |row|
       row.name == 'test' and row.name == 10
     end
-    row = Row.new([:name], @table)
+    row = Row.new([:name], []).with_from(@from)
     assert_equal(
       "tables.name = 'test' and tables.name = 10",
       result.call(row).ref_sql
@@ -25,7 +25,7 @@ class ExprTest < Minitest::Spec
     result = expr do |row|
       row.name <= 10
     end
-    row = Row.new([:name], @table)
+    row = Row.new([:name], []).with_from(@from)
     assert_equal(
       "tables.name <= 10",
       result.call(row).ref_sql
@@ -33,7 +33,7 @@ class ExprTest < Minitest::Spec
   end
 
   it 'reads from binding' do
-    row = Row.new([:name], @table)
+    row = Row.new([:name], []).with_from(@from)
     result = expr do
       row.name == nil
     end
@@ -52,7 +52,7 @@ class ExprTest < Minitest::Spec
       end
     end
 
-    row = Row.new([:currency, :amount], @table)
+    row = Row.new([:currency, :amount], []).with_from(@from)
     assert_content_equal(
       "if(tables.currency in ('krw', 'jpy'), tables.amount, tables.amount * 0.01)",
       result.call(row).ref_sql

@@ -1,63 +1,77 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/lilit'
+require_relative '../lib/lilit_sql'
 require_relative 'helpers'
 
 class LookupTest < Minitest::Spec
 
-  JournalEntry = Struct.new(:debit, :credit, :amount, :invoice, :charge)
-  IncomeStatement = Struct.new(:account, :amount, :invoice)
+  JournalEntry = Struct.new(:debit, :credit, :amount, :currency, :invoice, :charge)
+  IncomeStatement = Struct.new(:account, :amount, :currency, :invoice)
   Invoice = Struct.new(:id, :number)
   Charge = Struct.new(:id, :description)
 
   def with_lookup(query)
-    query = if query.has?(:invoice)
-              invoices = Query.new(Table.new(Invoice, 'invoices'))
-              query.left_join(invoices) do |*tables|
-                left = tables.first
-                invoice = tables.last
+    if query.has?(:invoice)
+      invoices = Query.from(Table.new(Invoice, 'invoices'))
+      query = query.left_join(invoices) do |*tables|
+        left = tables.first
+        invoice = tables.last
 
-                left.col(:invoice).eq(invoice.col(:id))
-              end
-            else
-              query
-            end
+        left.invoice == invoice.id
+      end
+    end
 
-    query = if query.has?(:charge)
-              charges = Query.new(Table.new(Charge, 'charges'))
-              query.left_join(charges) do |*tables|
-                left = tables.first
-                charge = tables.last
+    if query.has?(:charge)
+      charges = Query.from(Table.new(Charge, 'charges'))
+      query = query.left_join(charges) do |*tables|
+        left = tables.first
+        charge = tables.last
 
-                left.col(:charge).eq(charge.col(:id))
-              end
-            else
-              query
-            end
+        left.charge == charge.id
+      end
+    end
 
     query
   end
 
-  it 'generates income statement' do
-    entries = Query.new(Table.new(IncomeStatement, 'income_statement'))
+  def inner_format_currency(amount, currency)
+    expr do
+      if currency in ['krw', 'jpy']
+        amount
+      else
+        amount * 0.01
+      end
+    end
+  end
 
-    result = Struct.new(:account, :amount, :invoice, :invoice_number)
+  def format_currency(amount, currency)
+    inner_format_currency(amount, currency)
+  end
+
+  it 'generates income statement' do
+    entries = Query.from(Table.new(IncomeStatement, 'income_statement'))
+
+    result = Struct.new(:account, :amount, :currency, :invoice, :invoice_number)
 
     query = with_lookup(entries)
       .map do |entry, invoice|
         result.new(
-          entry.col(:account),
-          entry.col(:amount),
-          entry.col(:invoice),
-          invoice.col(:number),
+          entry.account,
+          format_currency(entry.amount, entry.currency),
+          entry.currency,
+          entry.invoice,
+          invoice.number,
        )
       end
 
     expected = <<-EOF
 select
   income_statement.account as account,
-  income_statement.amount as amount,
+  if(income_statement.currency in ('krw', 'jpy'), 
+     income_statement.amount, 
+     income_statement.amount * 0.01) as amount,
+  income_statement.currency as currency,
   income_statement.invoice as invoice,
   invoices.number as invoice_number
 from income_statement
@@ -69,20 +83,22 @@ EOF
   end
 
   it 'generates journal entries' do
-    entries = Query.new(Table.new(JournalEntry, 'journal_entries'))
+    entries = Query.from(Table.new(JournalEntry, 'journal_entries'))
 
-    result = Struct.new(:debit, :credit, :amount, :invoice, :charge, :invoice_number, :charge_description)
+    result = Struct.new(:debit, :credit, :amount, :currency, :invoice, :charge, :invoice_number, :charge_description)
 
     query = with_lookup(entries)
               .map do |entry, invoice, charge|
+      formatted = format_currency(entry.amount, entry.currency)
       result.new(
-        entry.col(:debit),
-        entry.col(:credit),
-        entry.col(:amount),
-        entry.col(:invoice),
-        entry.col(:charge),
-        invoice.col(:number),
-        charge.col(:description)
+        entry.debit,
+        entry.credit,
+        formatted,
+        entry.currency,
+        entry.invoice,
+        entry.charge,
+        invoice.number,
+        charge.description
       )
     end
 
@@ -90,7 +106,10 @@ EOF
 select
   journal_entries.debit as debit,
   journal_entries.credit as credit,
-  journal_entries.amount as amount,
+  if(journal_entries.currency in ('krw', 'jpy'), 
+     journal_entries.amount, 
+     journal_entries.amount * 0.01) as amount,
+  journal_entries.currency as currency,
   journal_entries.invoice as invoice,
   journal_entries.charge as charge,
   invoices.number as invoice_number,

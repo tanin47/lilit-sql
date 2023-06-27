@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/lilit'
+require_relative '../lib/lilit_sql'
 require_relative 'helpers'
 
 class GroupByTest < Minitest::Spec
@@ -10,9 +10,9 @@ class GroupByTest < Minitest::Spec
 
   it 'groups by' do
     result = Struct.new(:age, :count)
-    query = Query.new(Table.new(Customer, 'customers'))
+    query = Query.from(Table.new(Customer, 'customers'))
                  .group_by {|c| c.age }
-                 .aggregate { |groupeds, _row| result.new(groupeds[0], Aggregate.count) }
+                 .aggregate { |keys, _row| result.new(keys[0], Aggregate.count) }
     expected = <<-EOF
 select 
   customers.age as age, 
@@ -27,11 +27,11 @@ EOF
   it 'groups by multiple times' do
     result = Struct.new(:level, :count)
     result2 = Struct.new(:level, :total, :count_level)
-    query = Query.new(Table.new(Customer, 'customers'))
+    query = Query.from(Table.new(Customer, 'customers'))
                  .group_by {|c| c.age }
-                 .aggregate { |groupeds, _row| result.new(groupeds[0], Aggregate.count) }
+                 .aggregate { |keys, _row| result.new(keys[0], Aggregate.count) }
                  .group_by {|c| c.level }
-                 .aggregate { |groupeds, row| result2.new(groupeds[0], Aggregate.sum(row.count), Aggregate.count)}
+                 .aggregate { |keys, row| result2.new(keys[0], Aggregate.sum(row.count), Aggregate.count)}
 
     expected = <<-EOF
 with subquery0 as (
@@ -46,9 +46,9 @@ EOF
 
   it 'groups by multiple keys' do
     result = Struct.new(:age_bucket, :name, :count)
-    query = Query.new(Table.new(Customer, 'customers'))
+    query = Query.from(Table.new(Customer, 'customers'))
                  .group_by {|c| [c.age * 10, c.name] }
-                 .aggregate { |groupeds, _row| result.new(groupeds[0], groupeds[1], Aggregate.count) }
+                 .aggregate { |keys, _row| result.new(keys[0], keys[1], Aggregate.count) }
     expected = <<-EOF
 select 
   customers.age * 10 as age_bucket, 
