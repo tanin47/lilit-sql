@@ -265,7 +265,7 @@ Tasks
 - [x] Support cumulative SQL with inequality operators 
 - [x] Add the waterfall example
 - [x] Fix the integer and string literal
-- [ ] Refactor Expr. Everything is an expression basically.
+- [x] Refactor Expr. Everything is an expression basically.
 - [ ] Support unnest
 - [ ] Support window function
 - [ ] Fully support Presto's syntax

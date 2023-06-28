@@ -585,9 +585,9 @@ def rewrite(parsed)
       parsed[2] = :ne
     elsif parsed[2] == :!
       parsed[2] = :not
-    elsif parsed[2] == :-
+    elsif parsed[2] == :-@
       parsed[2] = :minus
-    elsif parsed[2] == :+
+    elsif parsed[2] == :+@
       parsed[2] = :plus
     elsif parsed[2] == :nil?
       parsed = Sexp.new(
