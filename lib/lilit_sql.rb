@@ -4,6 +4,120 @@ require 'ruby2ruby'
 require 'ruby_parser'
 require 'sourcify'
 
+
+class Expr
+  def and(other)
+    BinaryOperation.new(self, :and, other)
+  end
+
+  def eq(other)
+    BinaryOperation.new(self, :'=', other)
+  end
+
+  def not
+    UnaryOperation.new(:not, self)
+  end
+
+  def minus
+    UnaryOperation.new(:-, self)
+  end
+
+  def plus
+    UnaryOperation.new(:+, self)
+  end
+
+  def ne(other)
+    BinaryOperation.new(self, :'!=', other)
+  end
+
+  def in(list)
+    BinaryOperation.new(self, :in, list)
+  end
+
+  def *(other)
+    BinaryOperation.new(self, :*, other)
+  end
+
+  def +(other)
+    BinaryOperation.new(self, :+, other)
+  end
+
+  def >=(other)
+    BinaryOperation.new(self, :'>=', other)
+  end
+
+  def <=(other)
+    BinaryOperation.new(self, :<=, other)
+  end
+
+  def >(other)
+    BinaryOperation.new(self, :'>', other)
+  end
+
+  def <(other)
+    BinaryOperation.new(self, :<, other)
+  end
+end
+
+class UnaryOperation < Expr
+  attr_accessor :op
+
+  def initialize(op, value)
+    @op = op
+    @value = value
+  end
+
+  def ref_sql
+    "#{@op} (#{@value.ref_sql})"
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == state
+  end
+
+  def state
+    instance_variables.map { |variable| instance_variable_get variable }
+  end
+end
+
+class BinaryOperation < Expr
+  attr_accessor :left, :op, :right
+
+  def initialize(left, op, right)
+    @left = left
+    @op = op
+    @right = lit(right)
+  end
+
+  def ref_sql
+    if @right.is_a?(Literal) && @right.value.nil?
+      return (
+        if @op == :'='
+          "#{@left.ref_sql} is #{@right.ref_sql}"
+        elsif @op == :!=
+          "#{@left.ref_sql} is not #{@right.ref_sql}"
+        else
+          raise ArgumentError.new("Nil doesn't support the operator: #{@op}")
+        end
+      )
+    end
+
+    if @op == :in
+      return "#{@left.ref_sql} in (#{@right.map(&:ref_sql).join(', ')})"
+    end
+
+    "#{@left.ref_sql} #{@op} #{@right.ref_sql}"
+  end
+
+  def ==(other)
+    other.class == self.class && other.state == state
+  end
+
+  def state
+    instance_variables.map { |variable| instance_variable_get variable }
+  end
+end
+
 class From
   attr_accessor :source, :join_type, :condition
 
@@ -99,7 +213,9 @@ class Row
   end
 end
 
-class Column
+
+
+class Column < Expr
   attr_accessor :name, :origin
 
   def initialize(name, origin = nil, from = nil)
@@ -110,22 +226,6 @@ class Column
 
   def with_from(from)
     Column.new(@name, @origin, from)
-  end
-
-  def eq(other)
-    Expr.new(self, :eq, other)
-  end
-
-  def in(list)
-    Expr.new(self, :in, list)
-  end
-
-  def *(other)
-    Expr.new(self, :*, other)
-  end
-
-  def <=(other)
-    Expr.new(self, :<=, other)
   end
 
   def ref_sql
@@ -193,7 +293,7 @@ module Aggregate
   end
 end
 
-class Literal
+class Literal < Expr
   attr_accessor :value
 
   def initialize(value)
@@ -216,10 +316,6 @@ class Literal
     end
   end
 
-  def <=(other)
-    Expr.new(self, :<=, other)
-  end
-
   def ==(other)
     other.class == self.class && other.state == state
   end
@@ -238,55 +334,6 @@ def lit(value)
     value.map { |v| lit(v) }
   else
     value
-  end
-end
-
-class Expr
-  attr_accessor :left, :op, :right
-
-  def initialize(left, op, right)
-    @left = left
-    @op = op
-    @right = lit(right)
-  end
-
-  def and(other)
-    Expr.new(self, :and, other)
-  end
-
-  def ref_sql
-    case op
-    when :and
-      "#{left.ref_sql} and #{right.ref_sql}"
-    when :eq
-      if right.is_a?(Literal) && right.value.nil?
-        "#{left.ref_sql} is #{right.ref_sql}"
-      else
-        "#{left.ref_sql} = #{right.ref_sql}"
-      end
-    when :ne
-      if right.is_a?(Literal) && right.value.nil?
-        "#{left.ref_sql} is not #{right.ref_sql}"
-      else
-        "#{left.ref_sql} != #{right.ref_sql}"
-      end
-    when :*
-      "#{left.ref_sql} * #{right.ref_sql}"
-    when :<=
-      "#{left.ref_sql} <= #{right.ref_sql}"
-    when :in
-      "#{left.ref_sql} in (#{right.map(&:ref_sql).join(', ')})"
-    else
-      raise ArgumentError, "#{op} is not supported by Expr"
-    end
-  end
-
-  def ==(other)
-    other.class == self.class && other.state == state
-  end
-
-  def state
-    instance_variables.map { |variable| instance_variable_get variable }
   end
 end
 
@@ -534,6 +581,14 @@ def rewrite(parsed)
   if parsed[0] == :call
     if parsed[2] == :==
       parsed[2] = :eq
+    elsif parsed[2] == :!=
+      parsed[2] = :ne
+    elsif parsed[2] == :!
+      parsed[2] = :not
+    elsif parsed[2] == :-
+      parsed[2] = :minus
+    elsif parsed[2] == :+
+      parsed[2] = :plus
     elsif parsed[2] == :nil?
       parsed = Sexp.new(
         :call,
