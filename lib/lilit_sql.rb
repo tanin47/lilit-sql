@@ -143,6 +143,24 @@ class From
   end
 end
 
+class CrossJoinUnnest
+  attr_accessor :from, :row, :ordinality
+
+  def initialize(from, row, ordinality)
+    @from = from
+    @row = row
+    @ordinality = ordinality
+  end
+
+  def rows
+    [@row].map {|r| r.with_from(@from)}
+  end
+
+  def alias_name
+    @from.source.table_name
+  end
+end
+
 class GroupBy
   attr_accessor :query, :keys
 
@@ -413,6 +431,27 @@ class Query
     perform_join(:left_join, other, &blk)
   end
 
+  def right_join(other, &blk)
+    perform_join(:right_join, other, &blk)
+  end
+
+  def cross_join(other)
+    perform_join(:cross_join, other)
+  end
+
+  def cross_join_unnest(ordinality = false, &blk)
+    return Query.from(self).cross_join_unnest(ordinality, &blk) if @row || @conditions.size.positive?
+
+    result = expr(&blk).call(*get_from_rows)
+    row = Row.new(result.class.members, result)
+    from = CrossJoinUnnest.new(From.new(Table.new(result.class, 't')), row, ordinality)
+    Query.new(
+      @froms + [from],
+      @conditions,
+      @grouped_keys,
+    )
+  end
+
   def where(&blk)
     return Query.from(self).where(&blk) if @row
 
@@ -441,21 +480,37 @@ class Query
     s += ' from'
 
     @froms.each_with_index do |from, index|
-      if index >= 1
-        if from.join_type == :join
-          s += ' join'
-        elsif from.join_type == :left_join
-          s += ' left join'
-        else
-          raise ArgumentError, "The join type #{from.join_type} is not supoprted."
+      if from.is_a?(From)
+        if index >= 1
+          if from.join_type == :join
+            s += ' join'
+          elsif from.join_type == :left_join
+            s += ' left join'
+          elsif from.join_type == :right_join
+            s += ' right join'
+          elsif from.join_type == :cross_join
+            s += ' cross join'
+          else
+            raise ArgumentError, "The join type #{from.join_type} is not supoprted."
+          end
         end
+
+        s += " #{from.source.subquery_name}"
+
+        s += " #{from.alias_name}" if from.source.subquery_name != from.alias_name
+
+        s += " on #{from.condition.ref_sql}" if from.condition
+      elsif from.is_a?(CrossJoinUnnest)
+        origins, cols = from.rows.first.columns.map {|c| [c.origin.ref_sql, c.name]}.transpose
+        s += " cross join unnest (#{origins.join(', ')})"
+        if from.ordinality
+          s += ' with ordinality'
+          cols.push('ordinal')
+        end
+        s += " as #{from.from.source.table_name} (#{cols.join(', ')})"
+      else
+        raise ArgumentError.new("From doesn't support #{from.inspect}")
       end
-
-      s += " #{from.source.subquery_name}"
-
-      s += " #{from.alias_name}" if from.source.subquery_name != from.alias_name
-
-      s += " on #{from.condition.ref_sql}" if from.condition
     end
 
     s += " where #{@conditions.map(&:ref_sql).join(' and ')}" if @conditions.size.positive?
@@ -492,8 +547,10 @@ class Query
     end
 
     other_from = From.new(other, join_type, nil, alias_name)
-    condition = expr(&blk).call(*(get_from_rows + other_from.rows.map { |r| r.with_from(other_from) }))
-    other_from.condition = condition
+    if blk
+      condition = expr(&blk).call(*(get_from_rows + other_from.rows.map { |r| r.with_from(other_from) }))
+      other_from.condition = condition
+    end
 
     Query.new(
       @froms + [other_from],
@@ -556,6 +613,7 @@ def fill(query)
 
   queries = []
   query.froms.each do |from|
+    next if from.is_a?(CrossJoinUnnest)
     next unless from.source.is_a?(Query)
 
     subqueries = fill(from.source)

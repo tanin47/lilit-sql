@@ -13,10 +13,10 @@ class GroupByTest < Minitest::Spec
                  .group_by { |c| c.age }
                  .aggregate { |keys, _row| result.new(keys[0], Aggregate.count) }
     expected = <<~EOF
-      select#{' '}
-        customers.age as age,#{' '}
-        count(*) as count#{' '}
-      from customers#{' '}
+      select
+        customers.age as age,
+        count(*) as count
+      from customers
       group by customers.age
     EOF
 
@@ -49,11 +49,11 @@ class GroupByTest < Minitest::Spec
                  .group_by { |c| [c.age * 10, c.name] }
                  .aggregate { |keys, _row| result.new(keys[0], keys[1], Aggregate.count) }
     expected = <<~EOF
-      select#{' '}
-        customers.age * 10 as age_bucket,#{' '}
-        customers.name as name,#{' '}
-        count(*) as count#{' '}
-      from customers#{' '}
+      select
+        customers.age * 10 as age_bucket,
+        customers.name as name,
+        count(*) as count
+      from customers
       group by customers.age * 10, customers.name
     EOF
 

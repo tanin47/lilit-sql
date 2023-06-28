@@ -30,8 +30,30 @@ class JoinTest < Minitest::Spec
       from customers
       join cities
       on customers.id = cities.customer_id
-      left join heights#{' '}
+      left join heights
       on customers.id = heights.customer_id
+    EOF
+
+    assert_content_equal(expected, generate_sql(query))
+  end
+
+  it 'cross joins' do
+    customers = Query.from(Table.new(Customer, 'customers'))
+    cities = Query.from(Table.new(City, 'cities'))
+
+    result = Struct.new(:customer_id, :name, :city)
+
+    query = customers
+              .cross_join(cities)
+              .map { |customer, city| result.new(customer.id, customer.name, city.name) }
+
+    expected = <<~EOF
+      select
+        customers.id as customer_id,
+        customers.name as name,
+        cities.name as city
+      from customers
+      cross join cities
     EOF
 
     assert_content_equal(expected, generate_sql(query))
