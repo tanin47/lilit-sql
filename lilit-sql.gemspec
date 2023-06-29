@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "lilit-sql"
-  s.version     = "0.0.1"
+  s.version     = "0.0.2"
   s.summary     = "lilit-sql is a Ruby DSL for composing production-grade analytical SQLs"
   s.description = "lilit-sql is a Ruby DSL for composing production-grade analytical SQLs
 
