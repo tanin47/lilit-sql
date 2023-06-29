@@ -10,7 +10,7 @@ class MapTest < Minitest::Spec
   it 'maps' do
     result = Struct.new(:level, :name)
     query = Query.from(Table.new(Customer, 'customers'))
-                 .where { |c| c.name == 'test' and c.age == 34 }
+                 .where { |c| c.name == 'test' && c.age == 34 }
                  .order_by { |c| c.name.asc }
                  .offset(20)
                  .limit(100)

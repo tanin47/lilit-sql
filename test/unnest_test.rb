@@ -31,7 +31,7 @@ cross join unnest (tests.scores) as t (score)
 
     entries = Query.from(Table.new(entry, 'tests'))
     query = entries
-              .cross_join_unnest(true) {|row| unnest.new(row.scores) }
+              .cross_join_unnest(ordinality: true) {|row| unnest.new(row.scores) }
               .map {|entry, unnested| result.new(entry.student, unnested.score)}
 
     expected = <<~EOF

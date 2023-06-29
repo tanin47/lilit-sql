@@ -5,7 +5,6 @@ GEM
     file-tail (1.2.0)
       tins (~> 1.0)
     json (2.6.3)
-    method_source (1.0.0)
     minitest (5.18.1)
     parallel (1.23.0)
     parser (3.2.2.3)
@@ -50,7 +49,6 @@ PLATFORMS
   x86_64-darwin-19
 
 DEPENDENCIES
-  method_source
   minitest
   rake
   rubocop

@@ -56,11 +56,11 @@ class LookupTest < Minitest::Spec
     query = with_lookup(entries)
             .map do |entry, invoice|
       result.new(
-        entry.account,
-        format_currency(entry.amount, entry.currency),
-        entry.currency,
-        entry.invoice,
-        invoice.number
+        account: entry.account,
+        amount: format_currency(entry.amount, entry.currency),
+        currency: entry.currency,
+        invoice: entry.invoice,
+        invoice_number: invoice.number
       )
     end
 

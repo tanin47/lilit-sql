@@ -502,7 +502,7 @@ class Query
     perform_join(:cross_join, other)
   end
 
-  def cross_join_unnest(ordinality = false, &blk)
+  def cross_join_unnest(ordinality: false, &blk)
     return Query.from(self).cross_join_unnest(ordinality, &blk) if @row || @conditions.size.positive? || @order_bys.size.positive? || @_limit || @_offset
 
     result = expr(&blk).call(*get_from_rows)

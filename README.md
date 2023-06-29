@@ -247,6 +247,17 @@ puts generate_sql(build(2016, 2020))
 # group by person
 ```
 
+Implementation detail
+----------------------
+
+Each function (e.g. map, where, group_by) call returns a Query, which can be later generated into a SQL.
+
+Ruby's blocks are re-written using `sourcify` and `ruby2ruby` in order to provide a DSL that looks like Plain Old Ruby Code (PORC).
+
+Two examples:
+- `row.name == 'test'` is re-written into `row.name.new.eq(Literal.new(test))`, which later generates: `name = 'test'`.
+- `if row.age <= 30; 'yes'; else; 'no'; end` is re-written into: `IfElse.new(row.age.lte(Literal.new(30)), Literal.new('yes'), Literal.new('no'))`, which later generates `if(age <= 30, 'yes', 'no')`.
+
 Tasks
 ------
 - [x] Support simple filter
@@ -268,5 +279,11 @@ Tasks
 - [x] Refactor Expr. Everything is an expression basically.
 - [x] Support unnest
 - [x] Support order by and limit
+- [ ] Get rid(...) of lit as much as possible 
+  - lit(23) <= something should have been 23 <= something. 
+  - This requires recognizing the operator after a number / string.
+- [ ] Refactor @froms and CrossJoinUnnest. CrossJoinUnnest is a special case of @froms.
+- [ ] Integrate with Sorbet
+
+Later:
 - [ ] Support window function
-- [ ] Fully support Presto's syntax
