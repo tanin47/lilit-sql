@@ -74,4 +74,16 @@ and tables.name is not null
       result.call(row).ref_sql
     )
   end
+
+  it 'uses lit on the left side' do
+    result = expr do |row|
+      lit(10) == row.amount
+    end
+
+    row = Row.new([:amount], []).with_from(@from)
+    assert_equal(
+      '10 = tables.amount',
+      result.call(row).ref_sql
+    )
+  end
 end

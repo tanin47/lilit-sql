@@ -1,9 +1,11 @@
 lilit-sql
 ==========
 
-lilit-sql is a Ruby DSL for composing production-grade analytical SQLs
+![CI test](https://github.com/tanin47/lilit-sql/actions/workflows/ruby.yml/badge.svg)
+
+lilit-sql is a Ruby DSL for composing maintainable production-grade analytical SQL statements.
  
-The DSL supports higher order primitives like parameterization and meta-programming, which makes writing production-grade analytical SQLs easier.
+The DSL supports higher order primitives like parameterization and meta-programming, which makes writing maintainable SQL statements easier.
 
 This is suitable for an application that builds analytics on top of SQL-supported data warehouses like Presto.
 
@@ -282,7 +284,6 @@ Tasks
 - [ ] Get rid(...) of lit as much as possible 
   - lit(23) <= something should have been 23 <= something. 
   - This requires recognizing the operator after a number / string.
-- [ ] Refactor @froms and CrossJoinUnnest. CrossJoinUnnest is a special case of @froms.
 - [ ] Integrate with Sorbet
 
 Later:
