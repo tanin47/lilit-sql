@@ -4,7 +4,6 @@ require 'ruby2ruby'
 require 'ruby_parser'
 require 'sourcify'
 
-
 class Expr
   def and(other)
     BinaryOperation.new(self, :and, other)
@@ -56,6 +55,31 @@ class Expr
 
   def <(other)
     BinaryOperation.new(self, :<, other)
+  end
+
+  def asc
+    OrderedByExpr.new(self, :asc)
+  end
+
+  def desc
+    OrderedByExpr.new(self, :desc)
+  end
+end
+
+class OrderedByExpr
+  attr_accessor :expr, :direction
+
+  def initialize(expr, direction = nil)
+    @expr = expr
+    @direction = direction
+  end
+
+  def sql
+    s = @expr.ref_sql
+
+    if @direction
+      s += " #{direction}"
+    end
   end
 end
 
@@ -173,9 +197,10 @@ class GroupBy
     result = expr(&blk).call(@keys, *@query.rows)
 
     Query.new(
-      @query.froms + [],
-      @query.conditions + [],
+      @query.froms,
+      @query.conditions,
       @keys,
+      @query.order_bys,
       Row.new(result.class.members, result)
     )
   end
@@ -369,13 +394,16 @@ class Table
 end
 
 class Query
-  attr_accessor :froms, :conditions, :grouped_keys, :row
+  attr_accessor :froms, :conditions, :grouped_keys, :order_bys, :row, :_limit, :_offset
 
-  def initialize(froms, conditions = [], grouped_keys = [], row = nil)
+  def initialize(froms, conditions = [], grouped_keys = [], order_bys = [], row = nil, limit = nil, offset = nil)
     @froms = froms + []
     @conditions = conditions + []
     @grouped_keys = grouped_keys + []
+    @order_bys = order_bys + []
     @row = row
+    @_limit = limit
+    @_offset = offset
     @subquery_name = nil
   end
 
@@ -395,7 +423,10 @@ class Query
       @froms,
       @conditions,
       @grouped_keys,
-      Row.new(result.class.members, result)
+      @order_bys,
+      Row.new(result.class.members, result),
+      @_limit,
+      @_offset
     )
   end
 
@@ -407,6 +438,38 @@ class Query
     return [@row] if @row
 
     get_from_rows
+  end
+
+  def order_by(&blk)
+    return Query.from(self).order_by(&blk) if @row
+
+    result = expr(&blk).call(*get_from_rows)
+
+    if result.is_a?(OrderedByExpr)
+      result = [result]
+    elsif result.is_a?(Expr)
+      result = OrderedByExpr.new(result)
+    end
+
+    Query.new(
+      @froms,
+      @conditions,
+      @grouped_keys,
+      @order_bys + result,
+      @row,
+      @_limit,
+      @_offset
+    )
+  end
+
+  def limit(number)
+    @_limit = number
+    self
+  end
+
+  def offset(number)
+    @_offset = number
+    self
   end
 
   def group_by(&blk)
@@ -440,7 +503,7 @@ class Query
   end
 
   def cross_join_unnest(ordinality = false, &blk)
-    return Query.from(self).cross_join_unnest(ordinality, &blk) if @row || @conditions.size.positive?
+    return Query.from(self).cross_join_unnest(ordinality, &blk) if @row || @conditions.size.positive? || @order_bys.size.positive? || @_limit || @_offset
 
     result = expr(&blk).call(*get_from_rows)
     row = Row.new(result.class.members, result)
@@ -460,7 +523,10 @@ class Query
       @froms,
       @conditions + [condition],
       @grouped_keys,
-      @row
+      @order_bys,
+      @row,
+      @_limit,
+      @_offset
     )
   end
 
@@ -517,6 +583,16 @@ class Query
 
     s += " group by #{@grouped_keys.map(&:ref_sql).join(', ')}" if @grouped_keys.size.positive?
 
+    s += " order by #{@order_bys.map(&:sql).join(', ')}" if @order_bys.size.positive?
+
+    if @_offset
+      s += " offset #{@_offset}"
+    end
+
+    if @_limit
+      s += " limit #{@_limit}"
+    end
+
     s
   end
 
@@ -536,7 +612,7 @@ class Query
   end
 
   def perform_join(join_type, other, &blk)
-    return Query.from(self).send(:perform_join, join_type, other, &blk) if @row || @conditions.size.positive?
+    return Query.from(self).send(:perform_join, join_type, other, &blk) if @row || @conditions.size.positive? || @order_bys.size.positive? || @_limit || @_offset
 
     alias_name = nil
     @froms.each do |from|
@@ -556,6 +632,7 @@ class Query
       @froms + [other_from],
       @conditions,
       @grouped_keys,
+      @order_bys,
       @row
     )
   end

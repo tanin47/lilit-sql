@@ -266,6 +266,7 @@ Tasks
 - [x] Add the waterfall example
 - [x] Fix the integer and string literal
 - [x] Refactor Expr. Everything is an expression basically.
-- [ ] Support unnest
+- [x] Support unnest
+- [x] Support order by and limit
 - [ ] Support window function
 - [ ] Fully support Presto's syntax

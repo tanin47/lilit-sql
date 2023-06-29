@@ -11,6 +11,9 @@ class MapTest < Minitest::Spec
     result = Struct.new(:level, :name)
     query = Query.from(Table.new(Customer, 'customers'))
                  .where { |c| c.name == 'test' and c.age == 34 }
+                 .order_by { |c| c.name.asc }
+                 .offset(20)
+                 .limit(100)
                  .map { |c| result.new(c.age, c.name) }
     expected = <<~EOF
       select
@@ -18,6 +21,9 @@ class MapTest < Minitest::Spec
         customers.name as name
       from customers
       where customers.name = 'test' and customers.age = 34
+      order by customers.name asc
+      offset 20
+      limit 100
     EOF
 
     assert_content_equal(expected, generate_sql(query))
