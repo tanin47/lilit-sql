@@ -12,13 +12,13 @@ class UnnestTest < Minitest::Spec
 
     entries = Query.from(Table.new(entry, 'tests'))
     query = entries
-              .cross_join_unnest {|row| unnest.new(row.scores) }
-              .map {|entry, unnested| result.new(entry.student, unnested.score)}
+            .cross_join_unnest { |row| unnest.new(row.scores) }
+            .map { |row, unnested| result.new(row.student, unnested.score) }
 
     expected = <<~EOF
-select tests.student as student, t.score as score
-from tests
-cross join unnest (tests.scores) as t (score)
+      select tests.student as student, t.score as score
+      from tests
+      cross join unnest (tests.scores) as t (score)
     EOF
 
     assert_content_equal(expected, generate_sql(query))
@@ -31,13 +31,13 @@ cross join unnest (tests.scores) as t (score)
 
     entries = Query.from(Table.new(entry, 'tests'))
     query = entries
-              .cross_join_unnest(ordinality: true) {|row| unnest.new(row.scores) }
-              .map {|entry, unnested| result.new(entry.student, unnested.score)}
+            .cross_join_unnest(ordinality: true) { |row| unnest.new(row.scores) }
+            .map { |row, unnested| result.new(row.student, unnested.score) }
 
     expected = <<~EOF
-select tests.student as student, t.score as score
-from tests
-cross join unnest (tests.scores) with ordinality as t (score, ordinal)
+      select tests.student as student, t.score as score
+      from tests
+      cross join unnest (tests.scores) with ordinality as t (score, ordinal)
     EOF
 
     assert_content_equal(expected, generate_sql(query))

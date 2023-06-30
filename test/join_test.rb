@@ -44,8 +44,8 @@ class JoinTest < Minitest::Spec
     result = Struct.new(:customer_id, :name, :city)
 
     query = customers
-              .cross_join(cities)
-              .map { |customer, city| result.new(customer.id, customer.name, city.name) }
+            .cross_join(cities)
+            .map { |customer, city| result.new(customer.id, customer.name, city.name) }
 
     expected = <<~EOF
       select

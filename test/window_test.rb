@@ -13,15 +13,15 @@ class WindowTest < Minitest::Spec
 
     entries = Query.from(Table.new(entry, 'tests'))
     query = entries
-              .cross_join_unnest {|row| unnest.new(row.scores) }
-              .map {|entry, unnested| result.new(entry.student, unnested.score)}
+            .cross_join_unnest { |row| unnest.new(row.scores) }
+            .map { |row, unnested| result.new(row.student, unnested.score) }
 
     expected = <<~EOF
-select 
-  orderkey, clerk, totalprice,
-  rank() over (partition by clerk order by totalprice desc) as rnk
-from orders
-order by clerk, rnk
+      select#{' '}
+        orderkey, clerk, totalprice,
+        rank() over (partition by clerk order by totalprice desc) as rnk
+      from orders
+      order by clerk, rnk
     EOF
 
     assert_content_equal(expected, generate_sql(query))
@@ -35,15 +35,15 @@ order by clerk, rnk
 
     entries = Query.from(Table.new(entry, 'tests'))
     query = entries
-              .cross_join_unnest {|row| unnest.new(row.scores) }
-              .map {|entry, unnested| result.new(entry.student, unnested.score)}
+            .cross_join_unnest { |row| unnest.new(row.scores) }
+            .map { |row, unnested| result.new(row.student, unnested.score) }
 
     expected = <<~EOF
-select 
-  clerk, orderdate, orderkey, totalprice,
-  sum(totalprice) over (partition by clerk order by orderdate) as rolling_sum
-from orders
-order by clerk, orderdate, orderkey
+      select#{' '}
+        clerk, orderdate, orderkey, totalprice,
+        sum(totalprice) over (partition by clerk order by orderdate) as rolling_sum
+      from orders
+      order by clerk, orderdate, orderkey
     EOF
 
     assert_content_equal(expected, generate_sql(query))

@@ -18,18 +18,18 @@ class ExprTest < Minitest::Spec
         row.name < 10 &&
         row.name != 10 &&
         row.name.nil? &&
-        row.name != nil
+        !row.name.nil?
     end
 
-    expected = <<-EOF
-tables.name = 'test'
-and tables.name >= 10
-and tables.name > 10
-and tables.name <= 10
-and tables.name < 10
-and tables.name != 10
-and tables.name is null
-and tables.name is not null
+    expected = <<~EOF
+      tables.name = 'test'
+      and tables.name >= 10
+      and tables.name > 10
+      and tables.name <= 10
+      and tables.name < 10
+      and tables.name != 10
+      and tables.name is null
+      and not (tables.name is null)
     EOF
 
     row = Row.new([:name], []).with_from(@from)
