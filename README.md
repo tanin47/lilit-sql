@@ -1,7 +1,8 @@
 lilit-sql
 ==========
 
-![CI test](https://github.com/tanin47/lilit-sql/actions/workflows/ruby.yml/badge.svg)
+[![Gem Version](https://badge.fury.io/rb/lilit-sql.svg)](https://rubygems.org/gems/lilit-sql)
+[![Test](https://github.com/tanin47/lilit-sql/actions/workflows/ruby.yml/badge.svg)](https://github.com/tanin47/lilit-sql/actions)
 
 lilit-sql is a Ruby DSL for composing maintainable production-grade analytical SQL statements.
  
@@ -281,9 +282,6 @@ Tasks
 - [x] Refactor Expr. Everything is an expression basically.
 - [x] Support unnest
 - [x] Support order by and limit
-- [ ] Get rid(...) of lit as much as possible 
-  - lit(23) <= something should have been 23 <= something. 
-  - This requires recognizing the operator after a number / string.
 - [ ] Integrate with Sorbet
 
 Later:
