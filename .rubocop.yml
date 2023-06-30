@@ -16,9 +16,6 @@ Lint/StructNewOverride:
 Style/GlobalVars:
   Enabled: false
 
-Security/Eval:
-  Enabled: false
-
 Style/SymbolProc:
   Enabled: false
 
