@@ -261,6 +261,13 @@ Two examples:
 - `row.name == 'test'` is re-written into `row.name.new.eq(Literal.new(test))`, which later generates: `name = 'test'`.
 - `if row.age <= 30; 'yes'; else; 'no'; end` is re-written into: `IfElse.new(row.age.lte(Literal.new(30)), Literal.new('yes'), Literal.new('no'))`, which later generates `if(age <= 30, 'yes', 'no')`.
 
+FAQ
+----
+
+### What does Lilit mean?
+
+Lilit in Thai (ลิลิต) is a Thai literary genre. 'Lilit' comes from 'Lalit' in Pali and Sansakrit languages. It means 'to play': to play rhythmic positions which have the same tone.
+
 Tasks
 ------
 - [x] Support simple filter
@@ -282,7 +289,7 @@ Tasks
 - [x] Refactor Expr. Everything is an expression basically.
 - [x] Support unnest
 - [x] Support order by and limit
-- [ ] Integrate with Sorbet
 
 Later:
 - [ ] Support window function
+- [ ] Integrate with Sorbet to support typed DSL. It's a bit too difficult.
