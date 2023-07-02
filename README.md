@@ -4,9 +4,9 @@ lilit-sql
 [![Gem Version](https://badge.fury.io/rb/lilit-sql.svg)](https://rubygems.org/gems/lilit-sql)
 [![Test](https://github.com/tanin47/lilit-sql/actions/workflows/ruby.yml/badge.svg)](https://github.com/tanin47/lilit-sql/actions)
 
-lilit-sql is a Ruby DSL for composing maintainable production-grade analytical SQL statements.
+lilit-sql is a Ruby DSL for composing maintainable analytical SQL statements.
  
-The DSL supports higher order primitives like parameterization and meta-programming, which makes writing maintainable SQL statements easier.
+The DSL supports higher order primitives like parameterization and meta-programming, which makes writing, and resuing parts of, SQL statements easier.
 
 This is suitable for an application that builds analytics on top of SQL-supported data warehouses like Presto.
 
